@@ -225,3 +225,64 @@ canvas {
   opacity: 0.9;
   line-height: 1;
 }
+
+.chat {
+  position: fixed;
+  left: 14px;
+  bottom: 16px;
+  width: min(420px, calc(100vw - 28px));
+  z-index: 20;
+  pointer-events: auto;
+}
+
+.chat-log {
+  height: 170px;
+  overflow-y: auto;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+  background: rgba(7, 12, 22, 0.75);
+  padding: 8px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.chat-msg {
+  color: #dfe9ff;
+  margin-bottom: 4px;
+  word-break: break-word;
+}
+
+.chat-author {
+  color: #7bb2ff;
+  font-weight: 700;
+}
+
+.chat-input-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+
+.chat-input {
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 9px;
+  background: rgba(10, 16, 28, 0.95);
+  color: #f2f6ff;
+  padding: 9px 10px;
+  outline: none;
+}
+
+.chat-input:focus {
+  border-color: #78a5ff;
+}
+
+.chat-send {
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 9px;
+  background: #2a57cc;
+  color: #fff;
+  padding: 9px 12px;
+  font-weight: 700;
+  cursor: pointer;
+}

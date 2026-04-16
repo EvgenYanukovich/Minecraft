@@ -12,6 +12,9 @@ const hostMessageEl = document.getElementById("host-message");
 const hostMessageTextEl = document.getElementById("host-message-text");
 const copyHostBtnEl = document.getElementById("btn-copy-host");
 const closeHostBtnEl = document.getElementById("btn-close-host");
+const chatLogEl = document.getElementById("chat-log");
+const chatInputEl = document.getElementById("chat-input");
+const chatSendEl = document.getElementById("chat-send");
 
 const CHUNK_SIZE = 16;
 const WORLD_HEIGHT = 64;
@@ -782,6 +785,16 @@ function placeBlock() {
 }
 
 document.addEventListener("keydown", (e) => {
+  const active = document.activeElement;
+  const isTyping = active === chatInputEl || active === nicknameInputEl || active === connectAddressEl;
+  if (isTyping && e.code !== "Escape") {
+    if (active === chatInputEl && e.code === "Enter") {
+      e.preventDefault();
+      sendChatMessage();
+    }
+    return;
+  }
+
   keys.add(e.code);
   if (e.code.startsWith("Digit")) {
     const i = Number(e.code.slice(5)) - 1;
@@ -789,6 +802,11 @@ document.addEventListener("keydown", (e) => {
       selectedSlot = i;
       renderHotbar();
     }
+  }
+
+  if (e.code === "Enter") {
+    e.preventDefault();
+    chatInputEl.focus();
   }
 });
 
@@ -890,6 +908,30 @@ function returnToMenuForReconnect(statusText) {
   startMenuEl.classList.remove("hidden");
   if (statusText) menuStatusEl.textContent = statusText;
   try { document.exitPointerLock(); } catch {}
+}
+
+function appendChatMessage(author, text) {
+  const row = document.createElement("div");
+  row.className = "chat-msg";
+  const safeAuthor = String(author || "Player").slice(0, 16);
+  row.innerHTML = `<span class="chat-author">${safeAuthor}:</span> ${String(text || "")}`;
+  chatLogEl.append(row);
+  while (chatLogEl.children.length > 80) {
+    chatLogEl.removeChild(chatLogEl.firstChild);
+  }
+  chatLogEl.scrollTop = chatLogEl.scrollHeight;
+}
+
+function sendChatMessage() {
+  if (!isConnectedToRoom()) return;
+  const text = String(chatInputEl.value || "").trim();
+  if (!text) return;
+  ws.send(JSON.stringify({
+    type: "chat_message",
+    roomCode,
+    text: text.slice(0, 240),
+  }));
+  chatInputEl.value = "";
 }
 
 function handlePeerMessage(peerId, msg) {
@@ -1000,6 +1042,10 @@ function connectToRoom(code, mode) {
       if (msg.type === "world_sync") {
         handlePeerMessage("server", { type: "sync_overrides", blocks: msg.blocks || [] });
       }
+
+      if (msg.type === "chat_message") {
+        appendChatMessage(msg.nickname || "Player", msg.text || "");
+      }
     };
   });
 }
@@ -1088,6 +1134,19 @@ copyHostBtnEl.addEventListener("click", async () => {
     menuStatusEl.textContent = "Сообщение скопировано.";
   } catch {
     menuStatusEl.textContent = "Не удалось скопировать автоматически. Скопируй текст вручную.";
+  }
+});
+
+chatSendEl.addEventListener("click", () => {
+  sendChatMessage();
+  if (pointerLocked) {
+    try { renderer.domElement.requestPointerLock(); } catch {}
+  }
+});
+
+chatInputEl.addEventListener("focus", () => {
+  if (document.pointerLockElement === renderer.domElement) {
+    try { document.exitPointerLock(); } catch {}
   }
 });
 

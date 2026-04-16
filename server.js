@@ -275,6 +275,22 @@ wss.on("connection", (ws) => {
 
       sendRoomToAll(room, { type: "block_set", clientId: id, x, y, z, id: bid });
     }
+
+    if (msg.type === "chat_message") {
+      const rc = String(msg.roomCode || state.roomCode || "").trim().toUpperCase();
+      const room = rooms.get(rc);
+      if (!room || !room.members.has(id)) return;
+
+      const text = String(msg.text || "").trim().slice(0, 240);
+      if (!text) return;
+
+      sendRoomToAll(room, {
+        type: "chat_message",
+        clientId: id,
+        nickname: String(state.nickname || "Player").slice(0, 16),
+        text,
+      });
+    }
   });
 
   ws.on("close", () => {
