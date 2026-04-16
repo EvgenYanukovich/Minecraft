@@ -23,6 +23,7 @@ const JUMP_SPEED = 9.4;
 const WALK_SPEED = 5.8;
 const SPRINT_SPEED = 8.2;
 const MAX_STEP = 0.04;
+const NET_SEND_INTERVAL = 1 / 30;
 
 const BLOCKS = {
   air: { id: 0, name: "Air", solid: false },
@@ -900,6 +901,10 @@ function connectToRoom(code, mode) {
         handlePeerMessage(msg.clientId, { type: "move", ...msg.state });
       }
 
+      if (msg.type === "peer_joined") {
+        menuStatusEl.textContent = "Игрок подключился к комнате.";
+      }
+
       if (msg.type === "block_set") {
         handlePeerMessage(msg.clientId, msg);
       }
@@ -1011,7 +1016,7 @@ let netAccumulator = 0;
 function sendPlayerState(dt) {
   if (!gameStarted || !isConnectedToRoom()) return;
   netAccumulator += dt;
-  if (netAccumulator < 0.05) return;
+  if (netAccumulator < NET_SEND_INTERVAL) return;
   netAccumulator = 0;
 
   const payload = {
@@ -1030,7 +1035,7 @@ function sendPlayerState(dt) {
 
 function updateRemotePlayersAnimation(dt) {
   for (const [, rp] of remotePlayers) {
-    rp.root.position.lerp(new THREE.Vector3(rp.targetPos.x, rp.targetPos.y, rp.targetPos.z), Math.min(1, dt * 12));
+    rp.root.position.lerp(new THREE.Vector3(rp.targetPos.x, rp.targetPos.y, rp.targetPos.z), Math.min(1, dt * 18));
     rp.root.rotation.y = rp.yaw + Math.PI;
     rp.headPivot.rotation.x = Math.max(-0.45, Math.min(0.45, rp.pitch * 0.5));
 

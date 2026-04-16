@@ -85,6 +85,16 @@ function sendRoomToOthers(room, senderId, message) {
   }
 }
 
+function sendRoomToAll(room, message) {
+  const payload = JSON.stringify(message);
+  for (const memberId of room.members) {
+    const member = players.get(memberId);
+    if (member && member.ws.readyState === 1) {
+      member.ws.send(payload);
+    }
+  }
+}
+
 const server = http.createServer((req, res) => {
   if (req.url && req.url.startsWith("/health")) {
     res.setHeader("Access-Control-Allow-Origin", "*");
@@ -206,6 +216,11 @@ wss.on("connection", (ws) => {
       state.roomCode = rc;
       room.members.add(id);
       ws.send(JSON.stringify({ type: "room_joined", roomCode: rc }));
+
+      sendRoomToOthers(room, id, {
+        type: "peer_joined",
+        clientId: id,
+      });
       return;
     }
 
@@ -254,7 +269,7 @@ wss.on("connection", (ws) => {
       room.blocks.set(blockKey(x, y, z), bid);
       blockOverrides.set(blockKey(x, y, z), bid);
 
-      sendRoomToOthers(room, id, { type: "block_set", clientId: id, x, y, z, id: bid });
+      sendRoomToAll(room, { type: "block_set", clientId: id, x, y, z, id: bid });
     }
   });
 
