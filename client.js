@@ -41,15 +41,15 @@ const HOTBAR = [BLOCKS.grass.id, BLOCKS.dirt.id, BLOCKS.stone.id, BLOCKS.wood.id
 
 let selectedSlot = 0;
 let pointerLocked = false;
-const localClientId = "p-local";
+const localClientId = `p-${Math.random().toString(36).slice(2, 10)}`;
 let gameStarted = false;
 let pendingHostStart = false;
 
 let isHostPeer = false;
-let dataChannel = null;
-let rtcConnection = null;
-let hostConnected = false;
-let pendingWorldSync = false;
+let clientDataChannel = null;
+let clientConnection = null;
+const hostPeers = new Map();
+const pendingHostOffers = new Map();
 
 const keys = new Set();
 
@@ -439,8 +439,13 @@ function setBlock(x, y, z, id, fromNetwork = false) {
   worldState.overrides.set(overrideKey(x, y, z), id);
   markChunkDirtyAtWorld(x, z);
 
-  if (!fromNetwork && dataChannel && dataChannel.readyState === "open") {
-    dataChannel.send(JSON.stringify({ type: "block_set", x, y, z, id }));
+  if (!fromNetwork) {
+    const payload = { type: "block_set", id, x, y, z, fromPeerId: localClientId };
+    if (isHostPeer) {
+      broadcastToAllPeers(payload);
+    } else if (clientDataChannel && clientDataChannel.readyState === "open") {
+      clientDataChannel.send(JSON.stringify(payload));
+    }
   }
 }
 
@@ -779,138 +784,296 @@ function decodeSignal(text) {
   return JSON.parse(decodeURIComponent(escape(atob(String(text).trim()))));
 }
 
-function attachPeerDataChannel(channel) {
-  dataChannel = channel;
-  dataChannel.onopen = () => {
-    hostConnected = true;
-    if (isHostPeer && pendingWorldSync) {
-      const blocks = [...worldState.overrides.entries()].map(([k, id]) => {
-        const [x, y, z] = k.split(",").map(Number);
-        return { x, y, z, id };
-      });
-      dataChannel.send(JSON.stringify({ type: "sync_overrides", blocks }));
-      pendingWorldSync = false;
+function randomId(prefix) {
+  return `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function removeRemotePlayer(id) {
+  const rp = remotePlayers.get(id);
+  if (!rp) return;
+  remotePlayersGroup.remove(rp.root);
+  remotePlayers.delete(id);
+}
+
+function clearAllRemotePlayers() {
+  for (const [id] of remotePlayers) {
+    removeRemotePlayer(id);
+  }
+}
+
+function broadcastToAllPeers(message) {
+  const payload = JSON.stringify(message);
+  for (const [, peer] of hostPeers) {
+    if (peer.channel && peer.channel.readyState === "open") {
+      peer.channel.send(payload);
     }
-    menuStatusEl.textContent = "Peer подключён. Можете играть.";
+  }
+}
+
+function sendWorldSyncToChannel(channel) {
+  if (!channel || channel.readyState !== "open") return;
+  const blocks = [...worldState.overrides.entries()].map(([k, id]) => {
+    const [x, y, z] = k.split(",").map(Number);
+    return { x, y, z, id };
+  });
+  channel.send(JSON.stringify({ type: "sync_overrides", blocks }));
+}
+
+function isAnyPeerConnected() {
+  if (!isHostPeer) {
+    return Boolean(clientDataChannel && clientDataChannel.readyState === "open");
+  }
+  for (const [, peer] of hostPeers) {
+    if (peer.channel && peer.channel.readyState === "open") return true;
+  }
+  return false;
+}
+
+function closeAndResetAsClient() {
+  if (clientDataChannel) {
+    try { clientDataChannel.close(); } catch {}
+    clientDataChannel = null;
+  }
+  if (clientConnection) {
+    try { clientConnection.close(); } catch {}
+    clientConnection = null;
+  }
+  clearAllRemotePlayers();
+}
+
+function removeHostPeer(peerId) {
+  const peer = hostPeers.get(peerId);
+  if (!peer) return;
+  if (peer.channel) {
+    try { peer.channel.close(); } catch {}
+  }
+  if (peer.connection) {
+    try { peer.connection.close(); } catch {}
+  }
+  hostPeers.delete(peerId);
+  removeRemotePlayer(peerId);
+  if (isHostPeer) {
+    broadcastToAllPeers({ type: "peer_left", id: peerId });
+  }
+}
+
+function closeAndResetHostPeers() {
+  for (const [peerId] of hostPeers) {
+    removeHostPeer(peerId);
+  }
+  pendingHostOffers.clear();
+}
+
+function resetNetworkingState() {
+  if (isHostPeer) {
+    closeAndResetHostPeers();
+  } else {
+    closeAndResetAsClient();
+  }
+}
+
+function returnToMenuForReconnect(statusText) {
+  gameStarted = false;
+  pointerLocked = false;
+  startMenuEl.classList.remove("hidden");
+  if (statusText) menuStatusEl.textContent = statusText;
+  try { document.exitPointerLock(); } catch {}
+}
+
+function handlePeerMessage(peerId, msg) {
+  if (msg.type === "move") {
+    let rp = remotePlayers.get(peerId);
+    if (!rp) {
+      rp = createSteveAvatar();
+      remotePlayersGroup.add(rp.root);
+      remotePlayers.set(peerId, rp);
+    }
+
+    const nextPos = new THREE.Vector3(msg.x, msg.y, msg.z);
+    if (rp.prevNetPos) {
+      const dist = rp.prevNetPos.distanceTo(nextPos);
+      rp.moveIntensity = Math.min(1, dist * 10);
+    } else {
+      rp.moveIntensity = 0;
+    }
+    rp.prevNetPos = nextPos;
+
+    rp.targetPos.copy(nextPos);
+    rp.yaw = Number(msg.yaw) || 0;
+    rp.pitch = Number(msg.pitch) || 0;
+
+    if (isHostPeer) {
+      const relay = {
+        type: "move",
+        id: peerId,
+        x: msg.x,
+        y: msg.y,
+        z: msg.z,
+        yaw: msg.yaw,
+        pitch: msg.pitch,
+      };
+      for (const [id, peer] of hostPeers) {
+        if (id === peerId) continue;
+        if (peer.channel && peer.channel.readyState === "open") {
+          peer.channel.send(JSON.stringify(relay));
+        }
+      }
+    }
+  }
+
+  if (msg.type === "block_set") {
+    setBlock(msg.x, msg.y, msg.z, msg.id, true);
+    if (isHostPeer) {
+      const relay = { ...msg, fromPeerId: peerId };
+      for (const [id, peer] of hostPeers) {
+        if (id === peerId) continue;
+        if (peer.channel && peer.channel.readyState === "open") {
+          peer.channel.send(JSON.stringify(relay));
+        }
+      }
+    }
+  }
+
+  if (msg.type === "sync_overrides") {
+    for (const block of msg.blocks) {
+      worldState.overrides.set(overrideKey(block.x, block.y, block.z), block.id);
+      markChunkDirtyAtWorld(block.x, block.z);
+    }
+  }
+
+  if (msg.type === "peer_left") {
+    removeRemotePlayer(String(msg.id || ""));
+  }
+}
+
+function attachClientDataChannel(channel) {
+  clientDataChannel = channel;
+  clientDataChannel.onopen = () => {
+    menuStatusEl.textContent = "Подключено. Можете играть.";
   };
-  dataChannel.onclose = () => {
-    hostConnected = false;
+  clientDataChannel.onclose = () => {
     if (gameStarted) {
-      menuStatusEl.textContent = "Peer отключился.";
+      closeAndResetAsClient();
+      returnToMenuForReconnect("Соединение закрыто. Можно переподключиться без перезагрузки.");
     }
   };
-  dataChannel.onmessage = (evt) => {
+  clientDataChannel.onmessage = (evt) => {
     const msg = JSON.parse(evt.data);
+    if (msg.id === localClientId) return;
+    handlePeerMessage(msg.id || "p-remote", msg);
+  };
+}
 
-    if (msg.type === "move") {
-      let rp = remotePlayers.get(msg.id || "p-remote");
-      if (!rp) {
-        rp = createSteveAvatar();
-        remotePlayersGroup.add(rp.root);
-        remotePlayers.set(msg.id || "p-remote", rp);
-      }
+function attachHostPeerChannel(peerId, connection, channel) {
+  hostPeers.set(peerId, { connection, channel });
 
-      const nextPos = new THREE.Vector3(msg.x, msg.y, msg.z);
-      if (rp.prevNetPos) {
-        const dist = rp.prevNetPos.distanceTo(nextPos);
-        rp.moveIntensity = Math.min(1, dist * 10);
-      } else {
-        rp.moveIntensity = 0;
-      }
-      rp.prevNetPos = nextPos;
+  channel.onopen = () => {
+    sendWorldSyncToChannel(channel);
+    menuStatusEl.textContent = `Игрок подключён (${hostPeers.size}).`;
+  };
 
-      rp.targetPos.copy(nextPos);
-      rp.yaw = Number(msg.yaw) || 0;
-      rp.pitch = Number(msg.pitch) || 0;
+  channel.onclose = () => {
+    removeHostPeer(peerId);
+    if (gameStarted) {
+      menuStatusEl.textContent = "Игрок отключился.";
     }
+  };
 
-    if (msg.type === "block_set") {
-      setBlock(msg.x, msg.y, msg.z, msg.id, true);
-    }
-
-    if (msg.type === "sync_overrides") {
-      for (const block of msg.blocks) {
-        worldState.overrides.set(overrideKey(block.x, block.y, block.z), block.id);
-        markChunkDirtyAtWorld(block.x, block.z);
-      }
-    }
+  channel.onmessage = (evt) => {
+    const msg = JSON.parse(evt.data);
+    if (msg.id === localClientId) return;
+    handlePeerMessage(peerId, msg);
   };
 }
 
 async function createHostOffer() {
   isHostPeer = true;
-  rtcConnection = new RTCPeerConnection({ iceServers: [] });
-  const channel = rtcConnection.createDataChannel("game");
-  attachPeerDataChannel(channel);
+  const peerId = randomId("peer");
+  const connection = new RTCPeerConnection({ iceServers: [] });
+  const channel = connection.createDataChannel("game");
+  attachHostPeerChannel(peerId, connection, channel);
 
-  const offer = await rtcConnection.createOffer();
-  await rtcConnection.setLocalDescription(offer);
+  const offer = await connection.createOffer();
+  await connection.setLocalDescription(offer);
 
   await new Promise((resolve) => {
-    if (rtcConnection.iceGatheringState === "complete") {
+    if (connection.iceGatheringState === "complete") {
       resolve();
       return;
     }
     const onIce = () => {
-      if (rtcConnection.iceGatheringState === "complete") {
-        rtcConnection.removeEventListener("icegatheringstatechange", onIce);
+      if (connection.iceGatheringState === "complete") {
+        connection.removeEventListener("icegatheringstatechange", onIce);
         resolve();
       }
     };
-    rtcConnection.addEventListener("icegatheringstatechange", onIce);
+    connection.addEventListener("icegatheringstatechange", onIce);
     setTimeout(() => {
-      rtcConnection.removeEventListener("icegatheringstatechange", onIce);
+      connection.removeEventListener("icegatheringstatechange", onIce);
       resolve();
     }, 4000);
   });
 
-  return encodeSignal(rtcConnection.localDescription);
+  pendingHostOffers.set(peerId, connection);
+  return encodeSignal({ peerId, description: connection.localDescription });
 }
 
 async function applyHostAnswer(answerCode) {
-  const answer = decodeSignal(answerCode);
-  await rtcConnection.setRemoteDescription(answer);
-
-  if (dataChannel && dataChannel.readyState === "open") {
-    const blocks = [...worldState.overrides.entries()].map(([k, id]) => {
-      const [x, y, z] = k.split(",").map(Number);
-      return { x, y, z, id };
-    });
-    dataChannel.send(JSON.stringify({ type: "sync_overrides", blocks }));
+  const payload = decodeSignal(answerCode);
+  const peerId = String(payload.peerId || "");
+  const description = payload.description;
+  if (!peerId || !description) {
+    throw new Error("invalid-answer");
   }
+  const connection = pendingHostOffers.get(peerId);
+  if (!connection) {
+    throw new Error("offer-not-found");
+  }
+
+  await connection.setRemoteDescription(description);
+  pendingHostOffers.delete(peerId);
 }
 
 async function connectAsClientWithOffer(offerCode) {
   isHostPeer = false;
-  rtcConnection = new RTCPeerConnection({ iceServers: [] });
-  rtcConnection.ondatachannel = (evt) => {
-    attachPeerDataChannel(evt.channel);
+  if (clientConnection) {
+    closeAndResetAsClient();
+  }
+
+  clientConnection = new RTCPeerConnection({ iceServers: [] });
+  clientConnection.ondatachannel = (evt) => {
+    attachClientDataChannel(evt.channel);
   };
 
-  const offer = decodeSignal(offerCode);
-  await rtcConnection.setRemoteDescription(offer);
-  const answer = await rtcConnection.createAnswer();
-  await rtcConnection.setLocalDescription(answer);
+  const payload = decodeSignal(offerCode);
+  const peerId = String(payload.peerId || "");
+  const offer = payload.description;
+  if (!peerId || !offer) {
+    throw new Error("invalid-offer");
+  }
+  await clientConnection.setRemoteDescription(offer);
+  const answer = await clientConnection.createAnswer();
+  await clientConnection.setLocalDescription(answer);
 
   await new Promise((resolve) => {
-    if (rtcConnection.iceGatheringState === "complete") {
+    if (clientConnection.iceGatheringState === "complete") {
       resolve();
       return;
     }
     const onIce = () => {
-      if (rtcConnection.iceGatheringState === "complete") {
-        rtcConnection.removeEventListener("icegatheringstatechange", onIce);
+      if (clientConnection.iceGatheringState === "complete") {
+        clientConnection.removeEventListener("icegatheringstatechange", onIce);
         resolve();
       }
     };
-    rtcConnection.addEventListener("icegatheringstatechange", onIce);
+    clientConnection.addEventListener("icegatheringstatechange", onIce);
     setTimeout(() => {
-      rtcConnection.removeEventListener("icegatheringstatechange", onIce);
+      clientConnection.removeEventListener("icegatheringstatechange", onIce);
       resolve();
     }, 4000);
   });
 
-  return encodeSignal(rtcConnection.localDescription);
+  return encodeSignal({ peerId, description: clientConnection.localDescription });
 }
 
 function beginGame() {
@@ -989,7 +1152,7 @@ copyHostBtnEl.addEventListener("click", async () => {
 });
 
 closeHostBtnEl.addEventListener("click", () => {
-  if (!pendingHostStart && !rtcConnection) return;
+  if (!pendingHostStart && !clientConnection && hostPeers.size === 0 && pendingHostOffers.size === 0) return;
   pendingHostStart = false;
   hideHostMessage();
   hostAnswerInputEl.classList.add("hidden");
@@ -1006,8 +1169,11 @@ applyAnswerBtnEl.addEventListener("click", async () => {
 
   try {
     await applyHostAnswer(answerCode);
-    pendingWorldSync = true;
-    menuStatusEl.textContent = "Игрок подключён. Нажми 'Закрыть и играть'.";
+    menuStatusEl.textContent = `Игрок подключён (${hostPeers.size}). Можешь подключать следующего или нажать 'Закрыть и играть'.`;
+    hostAnswerInputEl.value = "";
+
+    const nextOffer = await createHostOffer();
+    hostMessageTextEl.textContent = `Код хоста (передай следующему игроку): ${nextOffer}`;
   } catch {
     menuStatusEl.textContent = "Неверный код игрока.";
   }
@@ -1015,11 +1181,12 @@ applyAnswerBtnEl.addEventListener("click", async () => {
 
 let netAccumulator = 0;
 function sendPlayerState(dt) {
-  if (!gameStarted || !dataChannel || dataChannel.readyState !== "open") return;
+  if (!gameStarted || !isAnyPeerConnected()) return;
   netAccumulator += dt;
   if (netAccumulator < 0.05) return;
   netAccumulator = 0;
-  dataChannel.send(JSON.stringify({
+
+  const payload = {
     type: "move",
     id: localClientId,
     x: Number(player.position.x.toFixed(3)),
@@ -1027,7 +1194,13 @@ function sendPlayerState(dt) {
     z: Number(player.position.z.toFixed(3)),
     yaw: Number(player.yaw.toFixed(3)),
     pitch: Number(player.pitch.toFixed(3)),
-  }));
+  };
+
+  if (isHostPeer) {
+    broadcastToAllPeers(payload);
+  } else if (clientDataChannel && clientDataChannel.readyState === "open") {
+    clientDataChannel.send(JSON.stringify(payload));
+  }
 }
 
 function updateRemotePlayersAnimation(dt) {
