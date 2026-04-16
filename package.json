@@ -1,0 +1,17 @@
+{
+  "name": "site",
+  "version": "1.0.0",
+  "description": "Мини-игра в стиле Minecraft, работающая прямо в браузере на `HTML + CSS + JavaScript` без зависимостей.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "echo \"No tests configured\""
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "three": "^0.183.2",
+    "ws": "^8.20.0"
+  }
+}

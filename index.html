@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BrowserCraft Multiplayer</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="start-menu" class="start-menu">
+    <div class="menu-card">
+      <h1>BrowserCraft P2P</h1>
+      <p class="menu-sub">Без сервера: обменяйтесь кодами подключения между игроками.</p>
+      <label class="menu-label" for="connect-address">Код хоста (для Connect)</label>
+      <input id="connect-address" class="menu-input" type="text" placeholder="Вставь код хоста" />
+      <div class="menu-actions">
+        <button id="btn-host" class="menu-btn">Host</button>
+        <button id="btn-connect" class="menu-btn menu-btn-primary">Connect</button>
+      </div>
+      <div id="menu-status" class="menu-status"></div>
+
+      <div id="host-message" class="host-message hidden">
+        <div id="host-message-text" class="host-message-text"></div>
+        <input id="host-answer-input" class="menu-input hidden" type="text" placeholder="Вставь код игрока" />
+        <div class="host-message-actions">
+          <button id="btn-copy-host" class="menu-btn">Скопировать</button>
+          <button id="btn-apply-answer" class="menu-btn hidden">Подключить игрока</button>
+          <button id="btn-close-host" class="menu-btn menu-btn-primary">Закрыть и играть</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="hud">
+    <div class="title">BrowserCraft Multiplayer</div>
+    <div id="debug" class="debug"></div>
+    <div class="help">
+      <div><b>Управление:</b> WASD — движение, Пробел — прыжок, Shift — спринт</div>
+      <div>Мышь — обзор (кликни по экрану для захвата), ЛКМ — сломать блок, ПКМ — поставить</div>
+      <div>1..5 — выбрать блок в хотбаре</div>
+    </div>
+  </div>
+
+  <div id="crosshair" class="crosshair">+</div>
+  <div id="hotbar" class="hotbar"></div>
+
+  <script type="module" src="client.js"></script>
+</body>
+</html>
