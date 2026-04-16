@@ -858,6 +858,10 @@ function connectToRoom(code, mode) {
     const socket = new WebSocket(`${protocol}://${location.host}/api/ws`);
     let joined = false;
 
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      try { ws.close(); } catch {}
+    }
+
     socket.onopen = () => {
       socket.send(JSON.stringify({ type: mode === "host" ? "host_create" : "room_join", roomCode: code, clientId: localClientId }));
     };
@@ -884,6 +888,7 @@ function connectToRoom(code, mode) {
         joined = true;
         ws = socket;
         roomCode = msg.roomCode;
+        clearAllRemotePlayers();
         resolve(msg.roomCode);
       }
 
@@ -937,8 +942,21 @@ hostBtnEl.addEventListener("click", async () => {
   pendingHostStart = true;
 
   try {
-    const code = generateRoomCode();
-    const room = await connectToRoom(code, "host");
+    let room = null;
+    for (let i = 0; i < 6; i += 1) {
+      const code = generateRoomCode();
+      try {
+        room = await connectToRoom(code, "host");
+        break;
+      } catch (error) {
+        if (!String(error?.message || "").includes("room-already-exists")) {
+          throw error;
+        }
+      }
+    }
+    if (!room) {
+      throw new Error("room-create-failed");
+    }
     hostMessageTextEl.textContent = `Комната создана. Код: ${room}`;
     hostMessageEl.classList.remove("hidden");
     menuStatusEl.textContent = "Передай код комнаты другим игрокам и нажми 'Закрыть и играть'.";
@@ -995,7 +1013,6 @@ function sendPlayerState(dt) {
   netAccumulator = 0;
 
   const payload = {
-    type: "move",
     id: localClientId,
     x: Number(player.position.x.toFixed(3)),
     y: Number(player.position.y.toFixed(3)),

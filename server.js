@@ -21,6 +21,32 @@ const players = new Map();
 const blockOverrides = new Map();
 const rooms = new Map();
 
+function leaveRoom(playerId, notify = true) {
+  const state = players.get(playerId);
+  if (!state || !state.roomCode) return;
+
+  const rc = String(state.roomCode).toUpperCase();
+  const room = rooms.get(rc);
+  state.roomCode = null;
+  if (!room) return;
+
+  room.members.delete(playerId);
+
+  if (notify) {
+    const payload = JSON.stringify({ type: "peer_left", clientId: playerId });
+    for (const memberId of room.members) {
+      const member = players.get(memberId);
+      if (member && member.ws.readyState === 1) {
+        member.ws.send(payload);
+      }
+    }
+  }
+
+  if (room.members.size === 0) {
+    rooms.delete(rc);
+  }
+}
+
 function getLanAddress() {
   const nets = os.networkInterfaces();
   for (const name of Object.keys(nets)) {
@@ -44,6 +70,17 @@ function broadcast(message, except = null) {
     if (except && id === except) continue;
     if (client.ws.readyState === 1) {
       client.ws.send(payload);
+    }
+  }
+}
+
+function sendRoomToOthers(room, senderId, message) {
+  const payload = JSON.stringify(message);
+  for (const memberId of room.members) {
+    if (memberId === senderId) continue;
+    const member = players.get(memberId);
+    if (member && member.ws.readyState === 1) {
+      member.ws.send(payload);
     }
   }
 }
@@ -139,26 +176,36 @@ wss.on("connection", (ws) => {
         return;
       }
 
+      if (state.roomCode) {
+        leaveRoom(id, false);
+      }
+
       let room = rooms.get(rc);
+      if (msg.type === "host_create" && room) {
+        ws.send(JSON.stringify({ type: "room_error", reason: "room-already-exists" }));
+        return;
+      }
+
+      if (!room && msg.type === "room_join") {
+        ws.send(JSON.stringify({ type: "room_error", reason: "room-not-found" }));
+        return;
+      }
+
       if (!room) {
-        if (msg.type === "room_join") {
-          ws.send(JSON.stringify({ type: "room_error", reason: "room-not-found" }));
-          return;
-        }
         room = { hostId: id, members: new Set(), blocks: new Map() };
         rooms.set(rc, room);
       }
-
-      state.roomCode = rc;
-      room.members.add(id);
-      ws.send(JSON.stringify({ type: "room_joined", roomCode: rc }));
 
       const blocks = [];
       for (const [key, value] of room.blocks) {
         const [x, y, z] = key.split(",").map(Number);
         blocks.push({ x, y, z, id: value });
       }
+
       ws.send(JSON.stringify({ type: "world_sync", blocks }));
+      state.roomCode = rc;
+      room.members.add(id);
+      ws.send(JSON.stringify({ type: "room_joined", roomCode: rc }));
       return;
     }
 
@@ -179,14 +226,7 @@ wss.on("connection", (ws) => {
         },
       };
 
-      const payload = JSON.stringify(stateMsg);
-      for (const memberId of room.members) {
-        if (memberId === id) continue;
-        const member = players.get(memberId);
-        if (member && member.ws.readyState === 1) {
-          member.ws.send(payload);
-        }
-      }
+      sendRoomToOthers(room, id, stateMsg);
       return;
     }
 
@@ -214,49 +254,15 @@ wss.on("connection", (ws) => {
       room.blocks.set(blockKey(x, y, z), bid);
       blockOverrides.set(blockKey(x, y, z), bid);
 
-      const payload = JSON.stringify({ type: "block_set", clientId: id, x, y, z, id: bid });
-      for (const memberId of room.members) {
-        if (memberId === id) continue;
-        const member = players.get(memberId);
-        if (member && member.ws.readyState === 1) {
-          member.ws.send(payload);
-        }
-      }
+      sendRoomToOthers(room, id, { type: "block_set", clientId: id, x, y, z, id: bid });
     }
   });
 
   ws.on("close", () => {
-    const state = players.get(id);
-    if (state && state.roomCode) {
-      const rc = String(state.roomCode).toUpperCase();
-      const room = rooms.get(rc);
-      if (room) {
-        room.members.delete(id);
-
-        const payload = JSON.stringify({ type: "peer_left", clientId: id });
-        for (const memberId of room.members) {
-          const member = players.get(memberId);
-          if (member && member.ws.readyState === 1) {
-            member.ws.send(payload);
-          }
-        }
-
-        if (room.members.size === 0) {
-          rooms.delete(rc);
-        }
-      }
-    }
+    leaveRoom(id, true);
     players.delete(id);
   });
 });
-
-setInterval(() => {
-  const playersList = [];
-  for (const [id, p] of players) {
-    playersList.push({ id, x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch });
-  }
-  broadcast({ type: "state", players: playersList });
-}, 50);
 
 server.listen(PORT, () => {
   console.log(`BrowserCraft server running on http://localhost:${PORT}`);
