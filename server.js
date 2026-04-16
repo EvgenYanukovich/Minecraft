@@ -19,6 +19,7 @@ const MIME = {
 
 const players = new Map();
 const blockOverrides = new Map();
+const rooms = new Map();
 
 function getLanAddress() {
   const nets = os.networkInterfaces();
@@ -61,6 +62,14 @@ const server = http.createServer((req, res) => {
     res.setHeader("Content-Type", "application/json; charset=utf-8");
     res.writeHead(200);
     res.end(JSON.stringify({ ok: true, address: getLanAddress() }));
+    return;
+  }
+
+  if (req.url && req.url.startsWith("/api/health")) {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    res.writeHead(200);
+    res.end(JSON.stringify({ ok: true, rooms: rooms.size }));
     return;
   }
 
@@ -123,6 +132,64 @@ wss.on("connection", (ws) => {
     const state = players.get(id);
     if (!state) return;
 
+    if (msg.type === "host_create" || msg.type === "room_join") {
+      const rc = String(msg.roomCode || "").trim().toUpperCase();
+      if (!rc) {
+        ws.send(JSON.stringify({ type: "room_error", reason: "invalid-room-code" }));
+        return;
+      }
+
+      let room = rooms.get(rc);
+      if (!room) {
+        if (msg.type === "room_join") {
+          ws.send(JSON.stringify({ type: "room_error", reason: "room-not-found" }));
+          return;
+        }
+        room = { hostId: id, members: new Set(), blocks: new Map() };
+        rooms.set(rc, room);
+      }
+
+      state.roomCode = rc;
+      room.members.add(id);
+      ws.send(JSON.stringify({ type: "room_joined", roomCode: rc }));
+
+      const blocks = [];
+      for (const [key, value] of room.blocks) {
+        const [x, y, z] = key.split(",").map(Number);
+        blocks.push({ x, y, z, id: value });
+      }
+      ws.send(JSON.stringify({ type: "world_sync", blocks }));
+      return;
+    }
+
+    if (msg.type === "peer_state") {
+      const rc = String(msg.roomCode || state.roomCode || "").trim().toUpperCase();
+      const room = rooms.get(rc);
+      if (!room || !room.members.has(id)) return;
+
+      const stateMsg = {
+        type: "peer_state",
+        clientId: id,
+        state: {
+          x: Number(msg.state?.x) || 0,
+          y: Number(msg.state?.y) || 0,
+          z: Number(msg.state?.z) || 0,
+          yaw: Number(msg.state?.yaw) || 0,
+          pitch: Number(msg.state?.pitch) || 0,
+        },
+      };
+
+      const payload = JSON.stringify(stateMsg);
+      for (const memberId of room.members) {
+        if (memberId === id) continue;
+        const member = players.get(memberId);
+        if (member && member.ws.readyState === 1) {
+          member.ws.send(payload);
+        }
+      }
+      return;
+    }
+
     if (msg.type === "move") {
       state.x = Number(msg.x) || state.x;
       state.y = Number(msg.y) || state.y;
@@ -132,6 +199,10 @@ wss.on("connection", (ws) => {
     }
 
     if (msg.type === "block_set") {
+      const rc = String(msg.roomCode || state.roomCode || "").trim().toUpperCase();
+      const room = rooms.get(rc);
+      if (!room || !room.members.has(id)) return;
+
       const x = Math.floor(Number(msg.x));
       const y = Math.floor(Number(msg.y));
       const z = Math.floor(Number(msg.z));
@@ -139,12 +210,42 @@ wss.on("connection", (ws) => {
       if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z) || !Number.isFinite(bid)) {
         return;
       }
+
+      room.blocks.set(blockKey(x, y, z), bid);
       blockOverrides.set(blockKey(x, y, z), bid);
-      broadcast({ type: "block_set", x, y, z, id: bid }, id);
+
+      const payload = JSON.stringify({ type: "block_set", clientId: id, x, y, z, id: bid });
+      for (const memberId of room.members) {
+        if (memberId === id) continue;
+        const member = players.get(memberId);
+        if (member && member.ws.readyState === 1) {
+          member.ws.send(payload);
+        }
+      }
     }
   });
 
   ws.on("close", () => {
+    const state = players.get(id);
+    if (state && state.roomCode) {
+      const rc = String(state.roomCode).toUpperCase();
+      const room = rooms.get(rc);
+      if (room) {
+        room.members.delete(id);
+
+        const payload = JSON.stringify({ type: "peer_left", clientId: id });
+        for (const memberId of room.members) {
+          const member = players.get(memberId);
+          if (member && member.ws.readyState === 1) {
+            member.ws.send(payload);
+          }
+        }
+
+        if (room.members.size === 0) {
+          rooms.delete(rc);
+        }
+      }
+    }
     players.delete(id);
   });
 });

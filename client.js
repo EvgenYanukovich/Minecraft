@@ -9,9 +9,7 @@ const connectBtnEl = document.getElementById("btn-connect");
 const menuStatusEl = document.getElementById("menu-status");
 const hostMessageEl = document.getElementById("host-message");
 const hostMessageTextEl = document.getElementById("host-message-text");
-const hostAnswerInputEl = document.getElementById("host-answer-input");
 const copyHostBtnEl = document.getElementById("btn-copy-host");
-const applyAnswerBtnEl = document.getElementById("btn-apply-answer");
 const closeHostBtnEl = document.getElementById("btn-close-host");
 
 const CHUNK_SIZE = 16;
@@ -45,11 +43,8 @@ const localClientId = `p-${Math.random().toString(36).slice(2, 10)}`;
 let gameStarted = false;
 let pendingHostStart = false;
 
-let isHostPeer = false;
-let clientDataChannel = null;
-let clientConnection = null;
-const hostPeers = new Map();
-const pendingHostOffers = new Map();
+let ws = null;
+let roomCode = null;
 
 const keys = new Set();
 
@@ -801,75 +796,8 @@ function clearAllRemotePlayers() {
   }
 }
 
-function broadcastToAllPeers(message) {
-  const payload = JSON.stringify(message);
-  for (const [, peer] of hostPeers) {
-    if (peer.channel && peer.channel.readyState === "open") {
-      peer.channel.send(payload);
-    }
-  }
-}
-
-function sendWorldSyncToChannel(channel) {
-  if (!channel || channel.readyState !== "open") return;
-  const blocks = [...worldState.overrides.entries()].map(([k, id]) => {
-    const [x, y, z] = k.split(",").map(Number);
-    return { x, y, z, id };
-  });
-  channel.send(JSON.stringify({ type: "sync_overrides", blocks }));
-}
-
-function isAnyPeerConnected() {
-  if (!isHostPeer) {
-    return Boolean(clientDataChannel && clientDataChannel.readyState === "open");
-  }
-  for (const [, peer] of hostPeers) {
-    if (peer.channel && peer.channel.readyState === "open") return true;
-  }
-  return false;
-}
-
-function closeAndResetAsClient() {
-  if (clientDataChannel) {
-    try { clientDataChannel.close(); } catch {}
-    clientDataChannel = null;
-  }
-  if (clientConnection) {
-    try { clientConnection.close(); } catch {}
-    clientConnection = null;
-  }
-  clearAllRemotePlayers();
-}
-
-function removeHostPeer(peerId) {
-  const peer = hostPeers.get(peerId);
-  if (!peer) return;
-  if (peer.channel) {
-    try { peer.channel.close(); } catch {}
-  }
-  if (peer.connection) {
-    try { peer.connection.close(); } catch {}
-  }
-  hostPeers.delete(peerId);
-  removeRemotePlayer(peerId);
-  if (isHostPeer) {
-    broadcastToAllPeers({ type: "peer_left", id: peerId });
-  }
-}
-
-function closeAndResetHostPeers() {
-  for (const [peerId] of hostPeers) {
-    removeHostPeer(peerId);
-  }
-  pendingHostOffers.clear();
-}
-
-function resetNetworkingState() {
-  if (isHostPeer) {
-    closeAndResetHostPeers();
-  } else {
-    closeAndResetAsClient();
-  }
+function isConnectedToRoom() {
+  return Boolean(ws && ws.readyState === WebSocket.OPEN && roomCode);
 }
 
 function returnToMenuForReconnect(statusText) {
@@ -902,36 +830,10 @@ function handlePeerMessage(peerId, msg) {
     rp.yaw = Number(msg.yaw) || 0;
     rp.pitch = Number(msg.pitch) || 0;
 
-    if (isHostPeer) {
-      const relay = {
-        type: "move",
-        id: peerId,
-        x: msg.x,
-        y: msg.y,
-        z: msg.z,
-        yaw: msg.yaw,
-        pitch: msg.pitch,
-      };
-      for (const [id, peer] of hostPeers) {
-        if (id === peerId) continue;
-        if (peer.channel && peer.channel.readyState === "open") {
-          peer.channel.send(JSON.stringify(relay));
-        }
-      }
-    }
   }
 
   if (msg.type === "block_set") {
     setBlock(msg.x, msg.y, msg.z, msg.id, true);
-    if (isHostPeer) {
-      const relay = { ...msg, fromPeerId: peerId };
-      for (const [id, peer] of hostPeers) {
-        if (id === peerId) continue;
-        if (peer.channel && peer.channel.readyState === "open") {
-          peer.channel.send(JSON.stringify(relay));
-        }
-      }
-    }
   }
 
   if (msg.type === "sync_overrides") {
@@ -946,134 +848,66 @@ function handlePeerMessage(peerId, msg) {
   }
 }
 
-function attachClientDataChannel(channel) {
-  clientDataChannel = channel;
-  clientDataChannel.onopen = () => {
-    menuStatusEl.textContent = "Подключено. Можете играть.";
-  };
-  clientDataChannel.onclose = () => {
-    if (gameStarted) {
-      closeAndResetAsClient();
-      returnToMenuForReconnect("Соединение закрыто. Можно переподключиться без перезагрузки.");
-    }
-  };
-  clientDataChannel.onmessage = (evt) => {
-    const msg = JSON.parse(evt.data);
-    if (msg.id === localClientId) return;
-    handlePeerMessage(msg.id || "p-remote", msg);
-  };
+function generateRoomCode() {
+  return Math.random().toString(36).toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
 }
 
-function attachHostPeerChannel(peerId, connection, channel) {
-  hostPeers.set(peerId, { connection, channel });
+function connectToRoom(code, mode) {
+  return new Promise((resolve, reject) => {
+    const protocol = location.protocol === "https:" ? "wss" : "ws";
+    const socket = new WebSocket(`${protocol}://${location.host}/api/ws`);
+    let joined = false;
 
-  channel.onopen = () => {
-    sendWorldSyncToChannel(channel);
-    menuStatusEl.textContent = `Игрок подключён (${hostPeers.size}).`;
-  };
+    socket.onopen = () => {
+      socket.send(JSON.stringify({ type: mode === "host" ? "host_create" : "room_join", roomCode: code, clientId: localClientId }));
+    };
 
-  channel.onclose = () => {
-    removeHostPeer(peerId);
-    if (gameStarted) {
-      menuStatusEl.textContent = "Игрок отключился.";
-    }
-  };
+    socket.onerror = () => {
+      if (!joined) reject(new Error("connect-failed"));
+    };
 
-  channel.onmessage = (evt) => {
-    const msg = JSON.parse(evt.data);
-    if (msg.id === localClientId) return;
-    handlePeerMessage(peerId, msg);
-  };
-}
-
-async function createHostOffer() {
-  isHostPeer = true;
-  const peerId = randomId("peer");
-  const connection = new RTCPeerConnection({ iceServers: [] });
-  const channel = connection.createDataChannel("game");
-  attachHostPeerChannel(peerId, connection, channel);
-
-  const offer = await connection.createOffer();
-  await connection.setLocalDescription(offer);
-
-  await new Promise((resolve) => {
-    if (connection.iceGatheringState === "complete") {
-      resolve();
-      return;
-    }
-    const onIce = () => {
-      if (connection.iceGatheringState === "complete") {
-        connection.removeEventListener("icegatheringstatechange", onIce);
-        resolve();
+    socket.onclose = () => {
+      if (!joined) {
+        reject(new Error("connect-closed"));
+      } else {
+        ws = null;
+        roomCode = null;
+        clearAllRemotePlayers();
+        returnToMenuForReconnect("Соединение закрыто. Можно переподключиться.");
       }
     };
-    connection.addEventListener("icegatheringstatechange", onIce);
-    setTimeout(() => {
-      connection.removeEventListener("icegatheringstatechange", onIce);
-      resolve();
-    }, 4000);
-  });
 
-  pendingHostOffers.set(peerId, connection);
-  return encodeSignal({ peerId, description: connection.localDescription });
-}
+    socket.onmessage = (evt) => {
+      const msg = JSON.parse(evt.data);
 
-async function applyHostAnswer(answerCode) {
-  const payload = decodeSignal(answerCode);
-  const peerId = String(payload.peerId || "");
-  const description = payload.description;
-  if (!peerId || !description) {
-    throw new Error("invalid-answer");
-  }
-  const connection = pendingHostOffers.get(peerId);
-  if (!connection) {
-    throw new Error("offer-not-found");
-  }
+      if (msg.type === "room_joined") {
+        joined = true;
+        ws = socket;
+        roomCode = msg.roomCode;
+        resolve(msg.roomCode);
+      }
 
-  await connection.setRemoteDescription(description);
-  pendingHostOffers.delete(peerId);
-}
+      if (msg.type === "room_error") {
+        if (!joined) reject(new Error(msg.reason || "room-error"));
+      }
 
-async function connectAsClientWithOffer(offerCode) {
-  isHostPeer = false;
-  if (clientConnection) {
-    closeAndResetAsClient();
-  }
+      if (msg.type === "peer_state") {
+        handlePeerMessage(msg.clientId, { type: "move", ...msg.state });
+      }
 
-  clientConnection = new RTCPeerConnection({ iceServers: [] });
-  clientConnection.ondatachannel = (evt) => {
-    attachClientDataChannel(evt.channel);
-  };
+      if (msg.type === "block_set") {
+        handlePeerMessage(msg.clientId, msg);
+      }
 
-  const payload = decodeSignal(offerCode);
-  const peerId = String(payload.peerId || "");
-  const offer = payload.description;
-  if (!peerId || !offer) {
-    throw new Error("invalid-offer");
-  }
-  await clientConnection.setRemoteDescription(offer);
-  const answer = await clientConnection.createAnswer();
-  await clientConnection.setLocalDescription(answer);
+      if (msg.type === "peer_left") {
+        handlePeerMessage(msg.clientId, { type: "peer_left", id: msg.clientId });
+      }
 
-  await new Promise((resolve) => {
-    if (clientConnection.iceGatheringState === "complete") {
-      resolve();
-      return;
-    }
-    const onIce = () => {
-      if (clientConnection.iceGatheringState === "complete") {
-        clientConnection.removeEventListener("icegatheringstatechange", onIce);
-        resolve();
+      if (msg.type === "world_sync") {
+        handlePeerMessage("server", { type: "sync_overrides", blocks: msg.blocks || [] });
       }
     };
-    clientConnection.addEventListener("icegatheringstatechange", onIce);
-    setTimeout(() => {
-      clientConnection.removeEventListener("icegatheringstatechange", onIce);
-      resolve();
-    }, 4000);
   });
-
-  return encodeSignal({ peerId, description: clientConnection.localDescription });
 }
 
 function beginGame() {
@@ -1099,20 +933,19 @@ hostBtnEl.addEventListener("click", async () => {
   if (gameStarted) return;
   disableMenuButtons(true);
   hideHostMessage();
-  menuStatusEl.textContent = "Создание кода хоста...";
+  menuStatusEl.textContent = "Создание комнаты...";
   pendingHostStart = true;
 
   try {
-    const offerCode = await createHostOffer();
-    hostMessageTextEl.textContent = `Код хоста (передай второму игроку): ${offerCode}`;
+    const code = generateRoomCode();
+    const room = await connectToRoom(code, "host");
+    hostMessageTextEl.textContent = `Комната создана. Код: ${room}`;
     hostMessageEl.classList.remove("hidden");
-    hostAnswerInputEl.classList.remove("hidden");
-    applyAnswerBtnEl.classList.remove("hidden");
-    menuStatusEl.textContent = "Передай код хоста второму игроку, вставь его код ответа и нажми 'Подключить игрока'.";
+    menuStatusEl.textContent = "Передай код комнаты другим игрокам и нажми 'Закрыть и играть'.";
     disableMenuButtons(false);
   } catch {
     pendingHostStart = false;
-    menuStatusEl.textContent = "Не удалось создать код хоста.";
+    menuStatusEl.textContent = "Не удалось создать комнату.";
     disableMenuButtons(false);
   }
 });
@@ -1120,22 +953,18 @@ hostBtnEl.addEventListener("click", async () => {
 connectBtnEl.addEventListener("click", async () => {
   if (gameStarted) return;
   hideHostMessage();
-  const offerCode = String(connectAddressEl.value || "").trim();
-  if (!offerCode) {
-    menuStatusEl.textContent = "Вставь код хоста";
+  const code = String(connectAddressEl.value || "").trim().toUpperCase();
+  if (!code) {
+    menuStatusEl.textContent = "Вставь код комнаты";
     return;
   }
   disableMenuButtons(true);
-  menuStatusEl.textContent = "Создание ответа для подключения...";
+  menuStatusEl.textContent = "Подключение к комнате...";
   try {
-    const answerCode = await connectAsClientWithOffer(offerCode);
-    hostMessageTextEl.textContent = `Код игрока (передай хосту): ${answerCode}`;
-    hostMessageEl.classList.remove("hidden");
-    hostAnswerInputEl.classList.add("hidden");
-    applyAnswerBtnEl.classList.add("hidden");
-    menuStatusEl.textContent = "Передай код игрока хосту и нажми 'Закрыть и играть'.";
+    await connectToRoom(code, "join");
+    menuStatusEl.textContent = "Подключено к комнате. Нажми 'Закрыть и играть'.";
   } catch {
-    menuStatusEl.textContent = "Неверный код хоста.";
+    menuStatusEl.textContent = "Не удалось подключиться к комнате.";
   }
   disableMenuButtons(false);
 });
@@ -1152,36 +981,15 @@ copyHostBtnEl.addEventListener("click", async () => {
 });
 
 closeHostBtnEl.addEventListener("click", () => {
-  if (!pendingHostStart && !clientConnection && hostPeers.size === 0 && pendingHostOffers.size === 0) return;
+  if (!pendingHostStart && !isConnectedToRoom()) return;
   pendingHostStart = false;
   hideHostMessage();
-  hostAnswerInputEl.classList.add("hidden");
-  applyAnswerBtnEl.classList.add("hidden");
   beginGame();
-});
-
-applyAnswerBtnEl.addEventListener("click", async () => {
-  const answerCode = String(hostAnswerInputEl.value || "").trim();
-  if (!answerCode) {
-    menuStatusEl.textContent = "Вставь код игрока";
-    return;
-  }
-
-  try {
-    await applyHostAnswer(answerCode);
-    menuStatusEl.textContent = `Игрок подключён (${hostPeers.size}). Можешь подключать следующего или нажать 'Закрыть и играть'.`;
-    hostAnswerInputEl.value = "";
-
-    const nextOffer = await createHostOffer();
-    hostMessageTextEl.textContent = `Код хоста (передай следующему игроку): ${nextOffer}`;
-  } catch {
-    menuStatusEl.textContent = "Неверный код игрока.";
-  }
 });
 
 let netAccumulator = 0;
 function sendPlayerState(dt) {
-  if (!gameStarted || !isAnyPeerConnected()) return;
+  if (!gameStarted || !isConnectedToRoom()) return;
   netAccumulator += dt;
   if (netAccumulator < 0.05) return;
   netAccumulator = 0;
@@ -1196,10 +1004,8 @@ function sendPlayerState(dt) {
     pitch: Number(player.pitch.toFixed(3)),
   };
 
-  if (isHostPeer) {
-    broadcastToAllPeers(payload);
-  } else if (clientDataChannel && clientDataChannel.readyState === "open") {
-    clientDataChannel.send(JSON.stringify(payload));
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: "peer_state", roomCode, state: payload }));
   }
 }
 
