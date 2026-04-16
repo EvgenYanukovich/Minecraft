@@ -435,13 +435,15 @@ function setBlock(x, y, z, id, fromNetwork = false) {
   worldState.overrides.set(overrideKey(x, y, z), id);
   markChunkDirtyAtWorld(x, z);
 
-  if (!fromNetwork) {
-    const payload = { type: "block_set", id, x, y, z, fromPeerId: localClientId };
-    if (isHostPeer) {
-      broadcastToAllPeers(payload);
-    } else if (clientDataChannel && clientDataChannel.readyState === "open") {
-      clientDataChannel.send(JSON.stringify(payload));
-    }
+  if (!fromNetwork && ws && ws.readyState === WebSocket.OPEN && roomCode) {
+    ws.send(JSON.stringify({
+      type: "block_set",
+      roomCode,
+      x,
+      y,
+      z,
+      id,
+    }));
   }
 }
 
