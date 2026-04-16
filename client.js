@@ -1,4 +1,4 @@
-import * as THREE from "./node_modules/three/build/three.module.js";
+import * as THREE from "https://unpkg.com/three@0.183.2/build/three.module.js";
 
 const debugEl = document.getElementById("debug");
 const hotbarEl = document.getElementById("hotbar");
