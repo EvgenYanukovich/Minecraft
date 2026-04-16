@@ -4,6 +4,7 @@ const debugEl = document.getElementById("debug");
 const hotbarEl = document.getElementById("hotbar");
 const startMenuEl = document.getElementById("start-menu");
 const connectAddressEl = document.getElementById("connect-address");
+const nicknameInputEl = document.getElementById("nickname-input");
 const hostBtnEl = document.getElementById("btn-host");
 const connectBtnEl = document.getElementById("btn-connect");
 const menuStatusEl = document.getElementById("menu-status");
@@ -32,15 +33,28 @@ const BLOCKS = {
   stone: { id: 3, name: "Stone", solid: true },
   wood: { id: 4, name: "Wood", solid: true },
   leaves: { id: 5, name: "Leaves", solid: true },
+  sand: { id: 6, name: "Sand", solid: true },
+  brick: { id: 7, name: "Brick", solid: true },
+  snow: { id: 8, name: "Snow", solid: true },
 };
 
 const BLOCK_LIST = Object.values(BLOCKS);
 const BLOCK_BY_ID = new Map(BLOCK_LIST.map((b) => [b.id, b]));
-const HOTBAR = [BLOCKS.grass.id, BLOCKS.dirt.id, BLOCKS.stone.id, BLOCKS.wood.id, BLOCKS.leaves.id];
+const HOTBAR = [
+  BLOCKS.grass.id,
+  BLOCKS.dirt.id,
+  BLOCKS.stone.id,
+  BLOCKS.wood.id,
+  BLOCKS.leaves.id,
+  BLOCKS.sand.id,
+  BLOCKS.brick.id,
+  BLOCKS.snow.id,
+];
 
 let selectedSlot = 0;
 let pointerLocked = false;
 const localClientId = `p-${Math.random().toString(36).slice(2, 10)}`;
+let localNickname = "Player";
 let gameStarted = false;
 let pendingHostStart = false;
 
@@ -143,6 +157,24 @@ const textureLeaves = makePixelTexture((g, s) => {
     g.fillRect(Math.floor(Math.random() * s), Math.floor(Math.random() * s), 1, 1);
   }
 });
+const textureSand = makePixelTexture((g, s) => {
+  fillNoise(g, s, "#d8c588", ["#c9b97f", "#e3d197", "#bfae74"]);
+});
+const textureBrick = makePixelTexture((g, s) => {
+  g.fillStyle = "#9a4c39";
+  g.fillRect(0, 0, s, s);
+  g.fillStyle = "#b56149";
+  for (let y = 0; y < s; y += 4) {
+    for (let x = (y % 8 === 0 ? 0 : 2); x < s; x += 4) {
+      g.fillRect(x, y, 3, 3);
+    }
+  }
+  g.fillStyle = "#6f3427";
+  for (let y = 3; y < s; y += 4) g.fillRect(0, y, s, 1);
+});
+const textureSnow = makePixelTexture((g, s) => {
+  fillNoise(g, s, "#eef7ff", ["#ffffff", "#d9ebfb", "#cfe3f4"]);
+});
 
 const materialsById = new Map();
 materialsById.set(BLOCKS.grass.id, [
@@ -164,6 +196,9 @@ materialsById.set(BLOCKS.wood.id, [
   new THREE.MeshLambertMaterial({ map: textureWoodSide }),
 ]);
 materialsById.set(BLOCKS.leaves.id, new THREE.MeshLambertMaterial({ map: textureLeaves }));
+materialsById.set(BLOCKS.sand.id, new THREE.MeshLambertMaterial({ map: textureSand }));
+materialsById.set(BLOCKS.brick.id, new THREE.MeshLambertMaterial({ map: textureBrick }));
+materialsById.set(BLOCKS.snow.id, new THREE.MeshLambertMaterial({ map: textureSnow }));
 
 const cubeGeometry = new THREE.BoxGeometry(1, 1, 1);
 
@@ -296,7 +331,20 @@ function createSteveAvatar() {
   rightLegPivot.add(rightLegMesh);
   root.add(rightLegPivot);
 
-  return {
+  const nameCanvas = document.createElement("canvas");
+  nameCanvas.width = 256;
+  nameCanvas.height = 64;
+  const nameCtx = nameCanvas.getContext("2d");
+  const nameTexture = new THREE.CanvasTexture(nameCanvas);
+  nameTexture.minFilter = THREE.LinearFilter;
+  nameTexture.magFilter = THREE.LinearFilter;
+  const nameMat = new THREE.SpriteMaterial({ map: nameTexture, transparent: true });
+  const nameSprite = new THREE.Sprite(nameMat);
+  nameSprite.position.set(0, 2.15, 0);
+  nameSprite.scale.set(1.6, 0.4, 1);
+  root.add(nameSprite);
+
+  const avatar = {
     root,
     headPivot,
     leftArmPivot,
@@ -309,7 +357,30 @@ function createSteveAvatar() {
     moveIntensity: 0,
     phase: 0,
     prevNetPos: null,
+    nickname: "Player",
+    nameCanvas,
+    nameCtx,
+    nameTexture,
+    nameSprite,
   };
+
+  updateAvatarNickname(avatar, "Player");
+  return avatar;
+}
+
+function updateAvatarNickname(avatar, nickname) {
+  avatar.nickname = nickname;
+  const ctx = avatar.nameCtx;
+  const c = avatar.nameCanvas;
+  ctx.clearRect(0, 0, c.width, c.height);
+  ctx.fillStyle = "rgba(0,0,0,0.45)";
+  ctx.fillRect(24, 14, 208, 36);
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "bold 26px Arial";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(nickname || "Player", c.width / 2, c.height / 2 + 1);
+  avatar.nameTexture.needsUpdate = true;
 }
 
 const player = {
@@ -765,7 +836,15 @@ function renderHotbar() {
     const c = document.createElement("div");
     c.className = "slot-color";
     const b = BLOCK_BY_ID.get(id);
-    c.style.background = b.id === BLOCKS.stone.id ? "#81858d" : b.id === BLOCKS.wood.id ? "#9b6d3f" : b.id === BLOCKS.leaves.id ? "#3f8f49" : b.id === BLOCKS.dirt.id ? "#8b5f3a" : "#5fae4f";
+    c.style.background =
+      b.id === BLOCKS.stone.id ? "#81858d" :
+      b.id === BLOCKS.wood.id ? "#9b6d3f" :
+      b.id === BLOCKS.leaves.id ? "#3f8f49" :
+      b.id === BLOCKS.dirt.id ? "#8b5f3a" :
+      b.id === BLOCKS.sand.id ? "#d8c588" :
+      b.id === BLOCKS.brick.id ? "#9a4c39" :
+      b.id === BLOCKS.snow.id ? "#eef7ff" :
+      "#5fae4f";
     const t = document.createElement("div");
     t.className = "slot-name";
     t.textContent = `${i + 1}. ${b.name}`;
@@ -789,6 +868,8 @@ function randomId(prefix) {
 function removeRemotePlayer(id) {
   const rp = remotePlayers.get(id);
   if (!rp) return;
+  if (rp.nameTexture) rp.nameTexture.dispose();
+  if (rp.nameSprite && rp.nameSprite.material) rp.nameSprite.material.dispose();
   remotePlayersGroup.remove(rp.root);
   remotePlayers.delete(id);
 }
@@ -832,6 +913,7 @@ function handlePeerMessage(peerId, msg) {
     rp.targetPos.copy(nextPos);
     rp.yaw = Number(msg.yaw) || 0;
     rp.pitch = Number(msg.pitch) || 0;
+    updateAvatarNickname(rp, String(msg.nickname || "Player"));
 
   }
 
@@ -943,6 +1025,7 @@ function hideHostMessage() {
 
 hostBtnEl.addEventListener("click", async () => {
   if (gameStarted) return;
+  localNickname = String(nicknameInputEl.value || "").trim() || `Player-${localClientId.slice(-4)}`;
   disableMenuButtons(true);
   hideHostMessage();
   menuStatusEl.textContent = "Создание комнаты...";
@@ -977,6 +1060,7 @@ hostBtnEl.addEventListener("click", async () => {
 
 connectBtnEl.addEventListener("click", async () => {
   if (gameStarted) return;
+  localNickname = String(nicknameInputEl.value || "").trim() || `Player-${localClientId.slice(-4)}`;
   hideHostMessage();
   const code = String(connectAddressEl.value || "").trim().toUpperCase();
   if (!code) {
@@ -1023,6 +1107,7 @@ function sendPlayerState(dt) {
 
   const payload = {
     id: localClientId,
+    nickname: localNickname,
     x: Number(player.position.x.toFixed(3)),
     y: Number(player.position.y.toFixed(3)),
     z: Number(player.position.z.toFixed(3)),
@@ -1039,7 +1124,7 @@ function updateRemotePlayersAnimation(dt) {
   for (const [, rp] of remotePlayers) {
     rp.root.position.lerp(new THREE.Vector3(rp.targetPos.x, rp.targetPos.y, rp.targetPos.z), Math.min(1, dt * 18));
     rp.root.rotation.y = rp.yaw + Math.PI;
-    rp.headPivot.rotation.x = Math.max(-0.45, Math.min(0.45, rp.pitch * 0.5));
+    rp.headPivot.rotation.x = Math.max(-0.45, Math.min(0.45, -rp.pitch * 0.5));
 
     const speedFactor = rp.moveIntensity;
     rp.phase += dt * (3 + speedFactor * 9);

@@ -158,6 +158,7 @@ wss.on("connection", (ws) => {
     z: 0,
     yaw: 0,
     pitch: 0,
+    nickname: "Player",
   });
 
   const overrides = [];
@@ -233,6 +234,7 @@ wss.on("connection", (ws) => {
         type: "peer_state",
         clientId: id,
         state: {
+          nickname: String(msg.state?.nickname || state.nickname || "Player").slice(0, 16),
           x: Number(msg.state?.x) || 0,
           y: Number(msg.state?.y) || 0,
           z: Number(msg.state?.z) || 0,
@@ -240,6 +242,8 @@ wss.on("connection", (ws) => {
           pitch: Number(msg.state?.pitch) || 0,
         },
       };
+
+      state.nickname = stateMsg.state.nickname;
 
       sendRoomToOthers(room, id, stateMsg);
       return;
