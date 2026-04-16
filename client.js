@@ -30,15 +30,15 @@ const MAX_STEP = 0.04;
 const NET_SEND_INTERVAL = 1 / 30;
 
 const BLOCKS = {
-  air: { id: 0, name: "Air", solid: false },
-  grass: { id: 1, name: "Grass", solid: true },
-  dirt: { id: 2, name: "Dirt", solid: true },
-  stone: { id: 3, name: "Stone", solid: true },
-  wood: { id: 4, name: "Wood", solid: true },
-  leaves: { id: 5, name: "Leaves", solid: true },
-  sand: { id: 6, name: "Sand", solid: true },
-  brick: { id: 7, name: "Brick", solid: true },
-  snow: { id: 8, name: "Snow", solid: true },
+  air: { id: 0, name: "Air", solid: false, hardness: 0 },
+  grass: { id: 1, name: "Grass", solid: true, hardness: 0.9 },
+  dirt: { id: 2, name: "Dirt", solid: true, hardness: 0.8 },
+  stone: { id: 3, name: "Stone", solid: true, hardness: 2.2 },
+  wood: { id: 4, name: "Wood", solid: true, hardness: 1.6 },
+  leaves: { id: 5, name: "Leaves", solid: true, hardness: 0.45 },
+  sand: { id: 6, name: "Sand", solid: true, hardness: 0.7 },
+  brick: { id: 7, name: "Brick", solid: true, hardness: 2.8 },
+  snow: { id: 8, name: "Snow", solid: true, hardness: 0.35 },
 };
 
 const BLOCK_LIST = Object.values(BLOCKS);
@@ -58,6 +58,9 @@ let selectedSlot = 0;
 let pointerLocked = false;
 const localClientId = `p-${Math.random().toString(36).slice(2, 10)}`;
 let localNickname = "Player";
+let miningActive = false;
+let miningProgress = 0;
+let miningKey = null;
 let gameStarted = false;
 let pendingHostStart = false;
 
@@ -768,12 +771,6 @@ function wouldBlockPlayerAt(x, y, z) {
   return pMinX < x + 1 && pMaxX > x && pMinY < y + 1 && pMaxY > y && pMinZ < z + 1 && pMaxZ > z;
 }
 
-function breakBlock() {
-  const target = updateTargetBlock();
-  if (!target) return;
-  setBlock(target.hit.x, target.hit.y, target.hit.z, BLOCK_AIR);
-}
-
 function placeBlock() {
   const target = updateTargetBlock();
   if (!target || !target.prev) return;
@@ -782,6 +779,37 @@ function placeBlock() {
   if (wouldBlockPlayerAt(x, y, z)) return;
   if (getBlock(x, y, z) !== BLOCK_AIR) return;
   setBlock(x, y, z, id);
+}
+
+function updateMining(dt) {
+  if (!miningActive || !pointerLocked || !gameStarted) {
+    miningProgress = 0;
+    miningKey = null;
+    return;
+  }
+
+  const target = updateTargetBlock();
+  if (!target) {
+    miningProgress = 0;
+    miningKey = null;
+    return;
+  }
+
+  const key = `${target.hit.x},${target.hit.y},${target.hit.z}`;
+  if (miningKey !== key) {
+    miningKey = key;
+    miningProgress = 0;
+  }
+
+  const info = BLOCK_BY_ID.get(target.id);
+  const hardness = Math.max(0.2, Number(info?.hardness || 1));
+  miningProgress += dt / hardness;
+
+  if (miningProgress >= 1) {
+    setBlock(target.hit.x, target.hit.y, target.hit.z, BLOCK_AIR);
+    miningProgress = 0;
+    miningKey = null;
+  }
 }
 
 document.addEventListener("keydown", (e) => {
@@ -836,8 +864,18 @@ renderer.domElement.addEventListener("contextmenu", (e) => e.preventDefault());
 renderer.domElement.addEventListener("mousedown", (e) => {
   if (!gameStarted) return;
   if (!pointerLocked) return;
-  if (e.button === 0) breakBlock();
+  if (e.button === 0) {
+    miningActive = true;
+  }
   else if (e.button === 2) placeBlock();
+});
+
+renderer.domElement.addEventListener("mouseup", (e) => {
+  if (e.button === 0) {
+    miningActive = false;
+    miningProgress = 0;
+    miningKey = null;
+  }
 });
 
 window.addEventListener("resize", () => {
@@ -1183,7 +1221,7 @@ function updateRemotePlayersAnimation(dt) {
   for (const [, rp] of remotePlayers) {
     rp.root.position.lerp(new THREE.Vector3(rp.targetPos.x, rp.targetPos.y, rp.targetPos.z), Math.min(1, dt * 18));
     rp.root.rotation.y = rp.yaw + Math.PI;
-    rp.headPivot.rotation.x = Math.max(-0.45, Math.min(0.45, -rp.pitch * 0.5));
+    rp.headPivot.rotation.x = Math.max(-0.45, Math.min(0.45, rp.pitch * 0.5));
 
     const speedFactor = rp.moveIntensity;
     rp.phase += dt * (3 + speedFactor * 9);
@@ -1205,6 +1243,7 @@ function animate(now) {
 
   ensureChunksAroundPlayer();
   updateMovement(dt);
+  updateMining(dt);
   updateTargetBlock();
   flushDirtyChunks();
   sendPlayerState(dt);
