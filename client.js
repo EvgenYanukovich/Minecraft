@@ -980,6 +980,8 @@ connectBtnEl.addEventListener("click", async () => {
   menuStatusEl.textContent = "Подключение к комнате...";
   try {
     await connectToRoom(code, "join");
+    hostMessageTextEl.textContent = `Подключено к комнате: ${code}`;
+    hostMessageEl.classList.remove("hidden");
     menuStatusEl.textContent = "Подключено к комнате. Нажми 'Закрыть и играть'.";
   } catch {
     menuStatusEl.textContent = "Не удалось подключиться к комнате.";
