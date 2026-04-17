@@ -127,6 +127,15 @@ let panoramaRenderer = null;
 let panoramaScene = null;
 let panoramaCamera = null;
 let panoramaTime = 0;
+const panoramaHeightMap = new Map();
+
+function panoramaHeightKey(x, z) {
+  return `${x},${z}`;
+}
+
+function getPanoramaHeightAt(x, z) {
+  return panoramaHeightMap.get(panoramaHeightKey(Math.floor(x), Math.floor(z))) ?? 8;
+}
 
 function getBlockColorById(id) {
   return id === BLOCKS.stone.id ? "#81858d" :
@@ -559,6 +568,13 @@ const textureBrick = makePixelTexture((g, s) => {
 });
 const textureSnow = makePixelTexture((g, s) => {
   fillNoise(g, s, "#eef7ff", ["#ffffff", "#d9ebfb", "#cfe3f4"]);
+});
+const textureWater = makePixelTexture((g, s) => {
+  fillNoise(g, s, "#4a83cb", ["#3b72b8", "#5f98dd", "#2f5fa3"]);
+  for (let y = 0; y < s; y += 4) {
+    g.fillStyle = "rgba(255,255,255,0.2)";
+    g.fillRect(0, y, s, 1);
+  }
 });
 
 const materialsById = new Map();
@@ -1863,13 +1879,13 @@ function initMenuPanorama() {
   sun.position.set(20, 28, 12);
   panoramaScene.add(sun);
 
-  const blockGeo = new THREE.BoxGeometry(1, 1, 1);
-  const waterMat = new THREE.MeshLambertMaterial({ color: 0x4a83cb });
-  const grassMat = new THREE.MeshLambertMaterial({ color: 0x58a947 });
-  const dirtMat = new THREE.MeshLambertMaterial({ color: 0x89613f });
-  const stoneMat = new THREE.MeshLambertMaterial({ color: 0x7e848e });
-  const woodMat = new THREE.MeshLambertMaterial({ color: 0x8f683d });
-  const leavesMat = new THREE.MeshLambertMaterial({ color: 0x3f8f49 });
+  const blockGeo = cubeGeometry;
+  const waterMat = new THREE.MeshLambertMaterial({ map: textureWater, transparent: true, opacity: 0.9 });
+  const grassMat = materialsById.get(BLOCKS.grass.id);
+  const dirtMat = materialsById.get(BLOCKS.dirt.id);
+  const stoneMat = materialsById.get(BLOCKS.stone.id);
+  const woodMat = materialsById.get(BLOCKS.wood.id);
+  const leavesMat = materialsById.get(BLOCKS.leaves.id);
 
   const radius = 28;
   for (let x = -radius; x <= radius; x += 1) {
@@ -1878,6 +1894,7 @@ function initMenuPanorama() {
       if (d > radius) continue;
 
       const h = Math.max(2, Math.floor(7 + Math.sin(x * 0.18) * 2 + Math.cos(z * 0.16) * 2));
+      panoramaHeightMap.set(panoramaHeightKey(x, z), h);
       for (let y = 0; y < h; y += 1) {
         const m = y === h - 1 ? grassMat : (y > h - 4 ? dirtMat : stoneMat);
         const b = new THREE.Mesh(blockGeo, m);
@@ -1935,9 +1952,13 @@ function initMenuPanorama() {
 function updateMenuPanorama(dt) {
   if (!panoramaRenderer || !panoramaScene || !panoramaCamera) return;
   panoramaTime += dt;
-  const r = 21;
-  const y = 10.5 + Math.sin(panoramaTime * 0.27) * 0.4;
-  panoramaCamera.position.set(Math.cos(panoramaTime * 0.13) * r, y, Math.sin(panoramaTime * 0.13) * r);
+  const r = 22;
+  const angle = panoramaTime * 0.11;
+  const camX = Math.cos(angle) * r;
+  const camZ = Math.sin(angle) * r;
+  const groundY = getPanoramaHeightAt(camX, camZ);
+  const y = groundY + 3.8 + Math.sin(panoramaTime * 0.23) * 0.22;
+  panoramaCamera.position.set(camX, y, camZ);
   panoramaCamera.lookAt(0, 7.5, 0);
   panoramaRenderer.render(panoramaScene, panoramaCamera);
 }
