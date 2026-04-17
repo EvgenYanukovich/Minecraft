@@ -169,6 +169,7 @@ let skinRedoStack = [];
 let skinSnapshotCaptured = false;
 let skinSavedSnapshot = null;
 let skinSpaceHeld = false;
+let skinAltHeld = false;
 let skinOrbiting = false;
 let skinSourceSize = 64;
 
@@ -574,6 +575,7 @@ function setSkinEditMode(mode) {
   skinPreview2dEl.classList.toggle("hidden", skinEditMode !== "3d");
   paintLayerBaseEl.classList.toggle("hidden", skinEditMode === "2d");
   paintLayerOverlayEl.classList.toggle("hidden", skinEditMode === "2d");
+  toolHandEl.classList.toggle("hidden", skinEditMode === "2d");
   editMode2dEl.classList.toggle("active-toggle", skinEditMode === "2d");
   editMode3dEl.classList.toggle("active-toggle", skinEditMode === "3d");
   if (skinEditMode === "3d" && typeof skinEditorPreviewResizeFn === "function") {
@@ -2959,7 +2961,8 @@ function initSkinEditorPreview() {
 
   skinEditor3dEl.addEventListener("mousedown", (evt) => {
     if (!skinEditorOpen || skinEditMode !== "3d") return;
-    const useHand = skinTool === "hand" || skinSpaceHeld;
+    const effectiveTool = skinAltHeld ? "picker" : skinTool;
+    const useHand = effectiveTool === "hand" || skinSpaceHeld;
     if (evt.button === 1) {
       skinEditorNavMode = "pan";
       skinOrbiting = true;
@@ -3013,7 +3016,7 @@ function initSkinEditorPreview() {
     ].includes(obj);
 
     let hit = hits[0];
-    if (skinTool !== "picker") {
+    if (effectiveTool !== "picker") {
       const wantOverlay = skinPaintLayer === "overlay";
       const matched = hits.find((h) => isOverlayObject(h.object) === wantOverlay);
       if (matched) hit = matched;
@@ -3060,15 +3063,15 @@ function initSkinEditorPreview() {
     const tx = faceRect.x + px;
     const ty = faceRect.y + py;
     if (!isMeshPaintEnabled(hit.object)) return;
-    if (!canPaintByLayer(tx, ty) && skinTool !== "picker") return;
+    if (!canPaintByLayer(tx, ty) && effectiveTool !== "picker") return;
 
     const isOverlayMesh = isOverlayObject(hit.object);
-    if (skinTool !== "picker") {
+    if (effectiveTool !== "picker") {
       if (skinPaintLayer === "overlay" && !isOverlayMesh) return;
       if (skinPaintLayer === "base" && isOverlayMesh) return;
     }
 
-    if (skinTool === "picker") {
+    if (effectiveTool === "picker") {
       pickSkinColorAt(tx, ty);
       skinSnapshotCaptured = false;
       return;
@@ -3079,7 +3082,7 @@ function initSkinEditorPreview() {
       skinRedoStack = [];
       skinSnapshotCaptured = true;
     }
-    if (skinTool === "eraser") {
+    if (effectiveTool === "eraser") {
       drawOnSkinAt(tx, ty);
     } else {
       drawOnSkinAt(tx, ty);
@@ -3243,9 +3246,11 @@ function initSkinEditorUi() {
   });
 
   window.addEventListener("keydown", (evt) => {
+    skinAltHeld = evt.altKey;
     if (evt.code === "Space") skinSpaceHeld = true;
   });
   window.addEventListener("keyup", (evt) => {
+    skinAltHeld = evt.altKey;
     if (evt.code === "Space") skinSpaceHeld = false;
   });
 
