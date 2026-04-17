@@ -534,6 +534,7 @@ function applyCurrentSkinToPreviews() {
 
 function applyEditorPreviewSkinOnly() {
   if (skinEditorPreviewAvatar) applySkinToAvatar(skinEditorPreviewAvatar, skinSourceCanvas);
+  if (skinPreviewPanelAvatar) applySkinToAvatar(skinPreviewPanelAvatar, skinSourceCanvas);
   renderSkinPreview2d();
 }
 
@@ -550,6 +551,11 @@ function setEditorOpen(open) {
     if (skinEditMode === "3d" && typeof skinEditorPreviewResizeFn === "function") {
       skinEditorPreviewResizeFn();
     }
+  } else if (skinSavedSnapshot) {
+    restoreSkinSnapshot(skinSavedSnapshot);
+    syncSkinToCanvasView();
+    applyCurrentSkinToPreviews();
+    syncSkinToDataUrl();
   }
 }
 
