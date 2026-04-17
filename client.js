@@ -448,6 +448,19 @@ function getPartEnabledForPixel(x, y) {
   return true;
 }
 
+function isPointInRect(x, y, r) {
+  return x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h;
+}
+
+function isOverlayPixel(x, y) {
+  const armOverlay = SKIN_PART_REGIONS.right_arm.slice(6).concat(SKIN_PART_REGIONS.left_arm.slice(6));
+  const legOverlay = SKIN_PART_REGIONS.right_leg.slice(6).concat(SKIN_PART_REGIONS.left_leg.slice(6));
+  const bodyOverlay = SKIN_PART_REGIONS.body.slice(6);
+  const headOverlay = SKIN_PART_REGIONS.head.slice(6);
+  const allOverlay = [...headOverlay, ...bodyOverlay, ...armOverlay, ...legOverlay];
+  return allOverlay.some((r) => isPointInRect(x, y, r));
+}
+
 function getEditorPixelFromEvent(evt) {
   const rect = skinEditorCanvasEl.getBoundingClientRect();
   const px = Math.floor(((evt.clientX - rect.left) / rect.width) * skinSourceSize);
@@ -466,7 +479,7 @@ function drawOnSkinAt(x, y) {
       const ty = y + oy - half;
       if (tx < 0 || tx > skinSourceSize - 1 || ty < 0 || ty > skinSourceSize - 1) continue;
       if (!getPartEnabledForPixel(tx, ty)) continue;
-      const inOverlay = tx >= (32 * (skinSourceSize / 64));
+      const inOverlay = isOverlayPixel(tx, ty);
       if (skinPaintLayer === "base" && inOverlay) continue;
       if (skinPaintLayer === "overlay" && !inOverlay) continue;
       if (skinTool === "eraser") {
@@ -480,7 +493,7 @@ function drawOnSkinAt(x, y) {
 }
 
 function canPaintByLayer(x, y) {
-  const inOverlay = x >= (32 * (skinSourceSize / 64));
+  const inOverlay = isOverlayPixel(x, y);
   if (skinPaintLayer === "base" && inOverlay) return false;
   if (skinPaintLayer === "overlay" && !inOverlay) return false;
   return true;
