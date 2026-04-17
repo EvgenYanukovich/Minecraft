@@ -78,8 +78,8 @@
             <button id="tool-redo" class="mc-mini-btn">→</button>
           </div>
           <div class="skin-editor-tools-row">
-            <button id="edit-mode-2d" class="mc-mini-btn">Режим 2D</button>
             <button id="edit-mode-3d" class="mc-mini-btn">Режим 3D</button>
+            <button id="edit-mode-2d" class="mc-mini-btn">Режим 2D</button>
             <button id="paint-layer-base" class="mc-mini-btn">Нижний слой</button>
             <button id="paint-layer-overlay" class="mc-mini-btn">Верхний слой</button>
           </div>
@@ -95,9 +95,11 @@
               <option value="8">8x8</option>
             </select>
           </div>
-          <div class="skin-editor-tools-row skin-editor-palette" id="skin-palette"></div>
-          <div class="skin-editor-tools-row">
-            <input id="skin-color" type="color" value="#2e6fb7" />
+          <div class="skin-editor-tools-row skin-editor-palette-row">
+            <button id="skin-active-color" class="skin-active-color" type="button" title="Активный цвет"></button>
+            <button id="skin-choose-color" class="mc-mini-btn" type="button">Выбрать цвет</button>
+            <div class="skin-editor-palette" id="skin-palette"></div>
+            <input id="skin-color" class="hidden" type="color" value="#2e6fb7" />
           </div>
         </div>
         <div class="skin-editor-right">
@@ -117,6 +119,7 @@
             <input id="skin-import-file" type="file" accept="image/png" class="hidden" />
           </div>
           <div class="skin-editor-tools-row">
+            <button id="skin-reset" class="mc-btn mc-btn-secondary">Очистить изменения</button>
             <button id="skin-save" class="mc-btn">Сохранить</button>
             <button id="skin-close" class="mc-btn mc-btn-secondary">Закрыть</button>
           </div>

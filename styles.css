@@ -721,7 +721,21 @@ body {
 }
 
 .skin-editor-palette {
+  display: flex;
+  flex-wrap: wrap;
   gap: 6px;
+}
+
+.skin-editor-palette-row {
+  align-items: center;
+}
+
+.skin-active-color {
+  width: 30px;
+  height: 30px;
+  border: 2px solid #1b1b1b;
+  cursor: pointer;
+  flex: 0 0 auto;
 }
 
 .skin-color-swatch {

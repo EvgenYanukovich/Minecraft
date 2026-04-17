@@ -52,6 +52,8 @@ const editMode2dEl = document.getElementById("edit-mode-2d");
 const editMode3dEl = document.getElementById("edit-mode-3d");
 const paintLayerBaseEl = document.getElementById("paint-layer-base");
 const paintLayerOverlayEl = document.getElementById("paint-layer-overlay");
+const skinActiveColorEl = document.getElementById("skin-active-color");
+const skinChooseColorEl = document.getElementById("skin-choose-color");
 const toolUndoEl = document.getElementById("tool-undo");
 const toolRedoEl = document.getElementById("tool-redo");
 const toolSizeEl = document.getElementById("tool-size");
@@ -66,6 +68,7 @@ const skinExportBtnEl = document.getElementById("skin-export");
 const skinImportFileEl = document.getElementById("skin-import-file");
 const skinSaveBtnEl = document.getElementById("skin-save");
 const skinCloseBtnEl = document.getElementById("skin-close");
+const skinResetBtnEl = document.getElementById("skin-reset");
 const skinPreview2dEl = document.getElementById("skin-preview-2d");
 const skinEditor3dEl = document.getElementById("skin-editor-3d");
 const skinPreview3dEl = document.getElementById("skin-preview-3d");
@@ -164,6 +167,7 @@ let skinDrawing = false;
 let skinUndoStack = [];
 let skinRedoStack = [];
 let skinSnapshotCaptured = false;
+let skinSavedSnapshot = null;
 let skinSpaceHeld = false;
 let skinOrbiting = false;
 let skinSourceSize = 64;
@@ -472,11 +476,13 @@ function getEditorPixelFromEvent(evt) {
 }
 
 function drawOnSkinAt(x, y) {
-  const half = Math.floor(skinBrushSize / 2);
-  for (let oy = 0; oy < skinBrushSize; oy += 1) {
-    for (let ox = 0; ox < skinBrushSize; ox += 1) {
-      const tx = x + ox - half;
-      const ty = y + oy - half;
+  const size = Math.max(1, Math.floor(skinBrushSize));
+  const startX = x - Math.floor((size - 1) / 2);
+  const startY = y - Math.floor((size - 1) / 2);
+  for (let oy = 0; oy < size; oy += 1) {
+    for (let ox = 0; ox < size; ox += 1) {
+      const tx = startX + ox;
+      const ty = startY + oy;
       if (tx < 0 || tx > skinSourceSize - 1 || ty < 0 || ty > skinSourceSize - 1) continue;
       if (!getPartEnabledForPixel(tx, ty)) continue;
       const inOverlay = isOverlayPixel(tx, ty);
@@ -524,6 +530,7 @@ function setEditorOpen(open) {
     syncSkinToCanvasView();
     applyEditorPreviewSkinOnly();
     renderSkinPreview2d();
+    skinSavedSnapshot = cloneSkinSnapshot();
     skinEditorOrbitYaw = 0;
     skinEditorOrbitPitch = 0;
     if (skinEditMode === "3d" && typeof skinEditorPreviewResizeFn === "function") {
@@ -3013,10 +3020,9 @@ function initSkinEditorPreview() {
       return;
     }
     if (skinTool === "eraser") {
-      skinSourceCtx.clearRect(tx, ty, 1, 1);
+      drawOnSkinAt(tx, ty);
     } else {
-      skinSourceCtx.fillStyle = skinColorEl.value;
-      skinSourceCtx.fillRect(tx, ty, 1, 1);
+      drawOnSkinAt(tx, ty);
     }
     syncSkinToCanvasView();
     applyEditorPreviewSkinOnly();
@@ -3098,6 +3104,9 @@ function initSkinEditorUi() {
     toolPickerEl.classList.toggle("active-toggle", skinTool === "picker");
     toolHandEl.classList.toggle("active-toggle", skinTool === "hand");
   };
+  const syncActiveColorUi = () => {
+    if (skinActiveColorEl) skinActiveColorEl.style.background = skinColorEl.value;
+  };
   toolBrushEl.addEventListener("click", () => { setTool("brush"); });
   toolEraserEl.addEventListener("click", () => { setTool("eraser"); });
   toolPickerEl.addEventListener("click", () => { setTool("picker"); });
@@ -3106,6 +3115,9 @@ function initSkinEditorUi() {
   editMode3dEl.addEventListener("click", () => setSkinEditMode("3d"));
   paintLayerBaseEl.addEventListener("click", () => { setSkinPaintLayer("base"); });
   paintLayerOverlayEl.addEventListener("click", () => { setSkinPaintLayer("overlay"); });
+  skinActiveColorEl.addEventListener("click", () => { skinColorEl.click(); });
+  skinChooseColorEl.addEventListener("click", () => { skinColorEl.click(); });
+  skinColorEl.addEventListener("input", syncActiveColorUi);
   toolSizeEl.addEventListener("change", () => {
     skinBrushSize = Math.max(1, Math.min(16, Number(toolSizeEl.value) || 1));
   });
@@ -3234,7 +3246,17 @@ function initSkinEditorUi() {
     saveSkinToStorage();
     applyCurrentSkinToPreviews();
     menuStatusEl.textContent = "Скин сохранён.";
+    skinSavedSnapshot = cloneSkinSnapshot();
     setEditorOpen(false);
+  });
+
+  skinResetBtnEl.addEventListener("click", () => {
+    if (!skinSavedSnapshot) return;
+    restoreSkinSnapshot(skinSavedSnapshot);
+    skinUndoStack = [];
+    skinRedoStack = [];
+    syncSkinToCanvasView();
+    applyEditorPreviewSkinOnly();
   });
 
   skinCloseBtnEl.addEventListener("click", () => {
@@ -3264,7 +3286,8 @@ function initSkinEditorUi() {
   partLeftLegEl.addEventListener("change", applyPartVisibility);
   setTool("brush");
   setSkinPaintLayer("base");
-  setSkinEditMode("2d");
+  setSkinEditMode("3d");
+  syncActiveColorUi();
   applyPartVisibility();
 }
 
