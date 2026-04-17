@@ -1156,24 +1156,26 @@ function makePartTexture(base, accents = []) {
 }
 
 function buildSkinFaceTexture(skinCanvas, x, y, w, h, flipX = false) {
-  const c = document.createElement("canvas");
-  c.width = 16;
-  c.height = 16;
-  const g = c.getContext("2d");
-  g.imageSmoothingEnabled = false;
   const scale = skinCanvas.width / 64;
   const sx = Math.round(x * scale);
   const sy = Math.round(y * scale);
   const sw = Math.round(w * scale);
   const sh = Math.round(h * scale);
+
+  const c = document.createElement("canvas");
+  c.width = Math.max(1, sw);
+  c.height = Math.max(1, sh);
+  const g = c.getContext("2d");
+  g.imageSmoothingEnabled = false;
+
   if (flipX) {
     g.save();
-    g.translate(16, 0);
+    g.translate(c.width, 0);
     g.scale(-1, 1);
-    g.drawImage(skinCanvas, sx, sy, sw, sh, 0, 0, 16, 16);
+    g.drawImage(skinCanvas, sx, sy, sw, sh, 0, 0, c.width, c.height);
     g.restore();
   } else {
-    g.drawImage(skinCanvas, sx, sy, sw, sh, 0, 0, 16, 16);
+    g.drawImage(skinCanvas, sx, sy, sw, sh, 0, 0, c.width, c.height);
   }
   const tex = new THREE.CanvasTexture(c);
   tex.magFilter = THREE.NearestFilter;
