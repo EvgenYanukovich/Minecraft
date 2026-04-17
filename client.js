@@ -28,6 +28,9 @@ const chatLogEl = document.getElementById("chat-log");
 const chatEl = document.getElementById("chat");
 const chatInputEl = document.getElementById("chat-input");
 const chatSendEl = document.getElementById("chat-send");
+const menuSkin3dEl = document.getElementById("menu-skin-3d");
+const pingOverlayEl = document.getElementById("ping-overlay");
+const pingListEl = document.getElementById("ping-list");
 const inventoryEl = document.getElementById("inventory");
 const inventoryHeldEl = document.getElementById("inventory-held");
 const inventoryGridEl = document.getElementById("inventory-grid");
@@ -93,6 +96,14 @@ let isHostRole = false;
 let localServerPeerId = null;
 let lobbyHostId = null;
 let roomParticipants = [];
+let chatHideTimer = null;
+let chatFadeTimer = null;
+let chatAutoVisible = false;
+let tabHeld = false;
+let pingAccumulator = 0;
+let pingRequestCounter = 1;
+const pendingPings = new Map();
+const playerPings = new Map();
 
 const inventorySlots = new Array(INVENTORY_TOTAL_SIZE).fill(BLOCK_AIR);
 for (let i = 0; i < HOTBAR_SIZE; i += 1) {
@@ -106,6 +117,11 @@ for (let i = 0; i < INVENTORY_MAIN_SIZE; i += 1) {
 const mineCracksEl = document.createElement("div");
 mineCracksEl.className = "mine-cracks";
 document.body.append(mineCracksEl);
+
+let menuSkinRenderer = null;
+let menuSkinScene = null;
+let menuSkinCamera = null;
+let menuSkinAvatar = null;
 
 function getBlockColorById(id) {
   return id === BLOCKS.stone.id ? "#81858d" :
@@ -164,6 +180,76 @@ function isUiBlockingGame() {
   return chatOpen || inventoryOpen;
 }
 
+function ensureChatVisible(autoMode) {
+  chatEl.classList.remove("hidden");
+  chatEl.classList.remove("fade-out");
+  chatAutoVisible = Boolean(autoMode);
+  if (chatHideTimer) {
+    clearTimeout(chatHideTimer);
+    chatHideTimer = null;
+  }
+  if (chatFadeTimer) {
+    clearTimeout(chatFadeTimer);
+    chatFadeTimer = null;
+  }
+}
+
+function scheduleChatAutoHide() {
+  ensureChatVisible(true);
+  chatHideTimer = setTimeout(() => {
+    if (chatOpen) return;
+    chatEl.classList.add("fade-out");
+    chatFadeTimer = setTimeout(() => {
+      if (!chatOpen) chatEl.classList.add("hidden");
+      chatEl.classList.remove("fade-out");
+      chatFadeTimer = null;
+    }, 350);
+    chatAutoVisible = false;
+  }, 10000);
+}
+
+function tryReturnControlToGame() {
+  if (!gameStarted || inventoryOpen || chatOpen) return;
+  if (!pointerLocked) {
+    renderer.domElement.requestPointerLock().catch(() => {});
+  }
+}
+
+function updatePingOverlay() {
+  pingListEl.innerHTML = "";
+  const rows = [];
+  if (localServerPeerId) {
+    rows.push({ id: localServerPeerId, nickname: localNickname });
+  }
+  for (const participant of roomParticipants) {
+    if (participant.id === localServerPeerId) continue;
+    rows.push(participant);
+  }
+
+  rows.forEach((participant) => {
+    const row = document.createElement("div");
+    row.className = "ping-row";
+    const name = document.createElement("span");
+    name.textContent = getParticipantDisplayName(participant);
+    const ms = document.createElement("span");
+    ms.className = "ping-ms";
+    const ping = playerPings.get(participant.id);
+    ms.textContent = Number.isFinite(ping) && ping >= 0 ? `${Math.round(ping)} ms` : "-- ms";
+    row.append(name, ms);
+    pingListEl.append(row);
+  });
+}
+
+function showPingOverlay() {
+  if (!gameStarted || !isConnectedToRoom()) return;
+  pingOverlayEl.classList.remove("hidden");
+  updatePingOverlay();
+}
+
+function hidePingOverlay() {
+  pingOverlayEl.classList.add("hidden");
+}
+
 function setMenuScreen(screen) {
   currentMenuScreen = screen;
   menuMainEl.classList.toggle("hidden", screen !== "main");
@@ -187,7 +273,13 @@ function renderParticipants() {
     return;
   }
 
-  roomParticipants.forEach((participant) => {
+  const ordered = [...roomParticipants].sort((a, b) => {
+    if (a.id === lobbyHostId) return -1;
+    if (b.id === lobbyHostId) return 1;
+    return 0;
+  });
+
+  ordered.forEach((participant) => {
     const row = document.createElement("div");
     row.className = "mc-room-member";
     const name = document.createElement("span");
@@ -203,6 +295,24 @@ function renderParticipants() {
 
     participantsListEl.append(row);
   });
+}
+
+function syncLocalNickname() {
+  const prev = localNickname;
+  const next = String(nicknameInputEl.value || "").trim() || `Player-${localClientId.slice(-4)}`;
+  localNickname = next;
+  if (localServerPeerId) {
+    ensureParticipantById(localServerPeerId, localNickname);
+    renderParticipants();
+    updatePingOverlay();
+  }
+  if (prev !== localNickname && isConnectedToRoom()) {
+    ws.send(JSON.stringify({
+      type: "nickname_update",
+      roomCode,
+      nickname: localNickname,
+    }));
+  }
 }
 
 function ensureParticipantById(id, nickname = "Player") {
@@ -227,13 +337,13 @@ function resetLobbyState() {
 }
 
 function updateLobbyStartButtonState() {
-  startRoomBtnEl.disabled = !(isHostRole && localServerPeerId && localServerPeerId === lobbyHostId);
+  startRoomBtnEl.disabled = !(localServerPeerId && localServerPeerId === lobbyHostId);
 }
 
 function openChat() {
   if (!gameStarted || inventoryOpen || chatOpen) return;
   chatOpen = true;
-  chatEl.classList.remove("hidden");
+  ensureChatVisible(false);
   resetMiningState();
   keys.clear();
   if (document.pointerLockElement === renderer.domElement) {
@@ -246,7 +356,8 @@ function closeChat() {
   if (!chatOpen) return;
   chatOpen = false;
   chatInputEl.blur();
-  chatEl.classList.add("hidden");
+  scheduleChatAutoHide();
+  tryReturnControlToGame();
 }
 
 function renderInventorySlot(slotIndex, selectedHotbarIndex) {
@@ -1101,12 +1212,12 @@ document.addEventListener("keydown", (e) => {
   const active = document.activeElement;
   const isTyping = active === chatInputEl || active === nicknameInputEl || active === roomCodeInputEl;
 
-  if (e.code === "Escape") {
-    if (chatOpen) {
-      e.preventDefault();
-      closeChat();
-      if (active && typeof active.blur === "function") active.blur();
-      return;
+    if (e.code === "Escape") {
+      if (chatOpen) {
+        e.preventDefault();
+        closeChat();
+        if (active && typeof active.blur === "function") active.blur();
+        return;
     }
     if (inventoryOpen) {
       e.preventDefault();
@@ -1123,6 +1234,13 @@ document.addEventListener("keydown", (e) => {
     return;
   }
 
+  if (e.code === "Tab" && gameStarted && !tabHeld) {
+    e.preventDefault();
+    tabHeld = true;
+    showPingOverlay();
+    return;
+  }
+
   if (e.code === "KeyE" && gameStarted && !chatOpen && active !== nicknameInputEl && active !== roomCodeInputEl) {
     e.preventDefault();
     if (inventoryOpen) closeInventory();
@@ -1130,14 +1248,15 @@ document.addEventListener("keydown", (e) => {
     return;
   }
 
-  if (isTyping && e.code !== "Escape") {
-    if (active === chatInputEl && e.code === "Enter") {
-      e.preventDefault();
-      sendChatMessage();
-      closeChat();
+    if (isTyping && e.code !== "Escape") {
+      if (active === chatInputEl && e.code === "Enter") {
+        e.preventDefault();
+        sendChatMessage();
+        closeChat();
+        if (active && typeof active.blur === "function") active.blur();
+      }
+      return;
     }
-    return;
-  }
 
   if (isUiBlockingGame()) {
     return;
@@ -1160,6 +1279,15 @@ document.addEventListener("keydown", (e) => {
 
 document.addEventListener("keyup", (e) => {
   keys.delete(e.code);
+  if (e.code === "Tab") {
+    tabHeld = false;
+    hidePingOverlay();
+  }
+});
+
+window.addEventListener("blur", () => {
+  tabHeld = false;
+  hidePingOverlay();
 });
 
 renderer.domElement.addEventListener("click", async () => {
@@ -1264,6 +1392,15 @@ function returnToMenuForReconnect(statusText) {
   gameStarted = false;
   pointerLocked = false;
   startMenuEl.classList.remove("hidden");
+  hidePingOverlay();
+  if (chatHideTimer) {
+    clearTimeout(chatHideTimer);
+    chatHideTimer = null;
+  }
+  if (chatFadeTimer) {
+    clearTimeout(chatFadeTimer);
+    chatFadeTimer = null;
+  }
   if (statusText) menuStatusEl.textContent = statusText;
   try { document.exitPointerLock(); } catch {}
 }
@@ -1278,6 +1415,7 @@ function appendChatMessage(author, text) {
     chatLogEl.removeChild(chatLogEl.firstChild);
   }
   chatLogEl.scrollTop = chatLogEl.scrollHeight;
+  scheduleChatAutoHide();
 }
 
 function sendChatMessage() {
@@ -1290,6 +1428,7 @@ function sendChatMessage() {
     text: text.slice(0, 240),
   }));
   chatInputEl.value = "";
+  scheduleChatAutoHide();
 }
 
 function handlePeerMessage(peerId, msg) {
@@ -1351,7 +1490,12 @@ function connectToRoom(code, mode) {
     }
 
     socket.onopen = () => {
-      socket.send(JSON.stringify({ type: mode === "host" ? "host_create" : "room_join", roomCode: code, clientId: localClientId }));
+      socket.send(JSON.stringify({
+        type: mode === "host" ? "host_create" : "room_join",
+        roomCode: code,
+        clientId: localClientId,
+        nickname: localNickname,
+      }));
     };
 
     socket.onerror = () => {
@@ -1372,6 +1516,11 @@ function connectToRoom(code, mode) {
     socket.onmessage = (evt) => {
       const msg = JSON.parse(evt.data);
 
+      if (msg.type === "welcome") {
+        localServerPeerId = String(msg.id || localServerPeerId || "");
+        return;
+      }
+
       if (msg.type === "room_joined") {
         joined = true;
         ws = socket;
@@ -1379,6 +1528,7 @@ function connectToRoom(code, mode) {
         roomCodeValueEl.textContent = msg.roomCode;
         lobbyHostId = String(msg.hostId || lobbyHostId || "");
         localServerPeerId = String(msg.clientId || localServerPeerId || "");
+        isHostRole = Boolean(localServerPeerId && localServerPeerId === lobbyHostId);
         roomParticipants = [];
         ensureParticipantById(localServerPeerId || localClientId, localNickname);
         renderParticipants();
@@ -1389,6 +1539,7 @@ function connectToRoom(code, mode) {
 
       if (msg.type === "room_members") {
         lobbyHostId = String(msg.hostId || lobbyHostId || "");
+        isHostRole = Boolean(localServerPeerId && localServerPeerId === lobbyHostId);
         const list = Array.isArray(msg.members) ? msg.members : [];
         roomParticipants = list.map((item) => ({
           id: String(item.id || ""),
@@ -1396,6 +1547,7 @@ function connectToRoom(code, mode) {
         })).filter((item) => item.id);
         renderParticipants();
         updateLobbyStartButtonState();
+        updatePingOverlay();
       }
 
       if (msg.type === "room_error") {
@@ -1409,7 +1561,14 @@ function connectToRoom(code, mode) {
       if (msg.type === "peer_joined") {
         ensureParticipantById(String(msg.clientId || ""), String(msg.nickname || "Player"));
         renderParticipants();
-        menuStatusEl.textContent = "Игрок подключился к комнате.";
+        updatePingOverlay();
+        if (!gameStarted) menuStatusEl.textContent = "Игрок подключился к комнате.";
+      }
+
+      if (msg.type === "nickname_update") {
+        ensureParticipantById(String(msg.clientId || ""), String(msg.nickname || "Player"));
+        renderParticipants();
+        updatePingOverlay();
       }
 
       if (msg.type === "block_set") {
@@ -1419,6 +1578,8 @@ function connectToRoom(code, mode) {
       if (msg.type === "peer_left") {
         removeParticipantById(String(msg.clientId || ""));
         renderParticipants();
+        playerPings.delete(String(msg.clientId || ""));
+        updatePingOverlay();
         handlePeerMessage(msg.clientId, { type: "peer_left", id: msg.clientId });
       }
 
@@ -1433,6 +1594,29 @@ function connectToRoom(code, mode) {
       if (msg.type === "chat_message") {
         appendChatMessage(msg.nickname || "Player", msg.text || "");
       }
+
+      if (msg.type === "ping_reply") {
+        const reqId = String(msg.requestId || "");
+        const started = pendingPings.get(reqId);
+        if (!started) return;
+        pendingPings.delete(reqId);
+        const peerId = String(msg.clientId || "");
+        const ping = performance.now() - started;
+        if (peerId) {
+          playerPings.set(peerId, ping);
+          updatePingOverlay();
+        }
+      }
+
+      if (msg.type === "ping_probe") {
+        if (!isConnectedToRoom()) return;
+        ws.send(JSON.stringify({
+          type: "ping_probe_reply",
+          roomCode,
+          requesterId: String(msg.requesterId || ""),
+          requestId: String(msg.requestId || ""),
+        }));
+      }
     };
   });
 }
@@ -1441,6 +1625,7 @@ function beginGame() {
   if (gameStarted) return;
   gameStarted = true;
   startMenuEl.classList.add("hidden");
+  scheduleChatAutoHide();
   spawnAtSafePlace();
   syncHotbarFromInventory();
   renderHotbar();
@@ -1450,7 +1635,7 @@ function beginGame() {
 singleplayerBtnEl.addEventListener("click", () => {
   networkMode = "single";
   isHostRole = false;
-  localNickname = String(nicknameInputEl.value || "").trim() || `Player-${localClientId.slice(-4)}`;
+  syncLocalNickname();
   beginGame();
 });
 
@@ -1484,7 +1669,7 @@ backMultiplayerBtnEl.addEventListener("click", () => {
 
 becomeHostBtnEl.addEventListener("click", async () => {
   if (gameStarted) return;
-  localNickname = String(nicknameInputEl.value || "").trim() || `Player-${localClientId.slice(-4)}`;
+  syncLocalNickname();
   networkMode = "multi";
   isHostRole = true;
   menuStatusEl.textContent = "Создание комнаты...";
@@ -1505,7 +1690,6 @@ becomeHostBtnEl.addEventListener("click", async () => {
     }
     if (!room) throw new Error("room-create-failed");
     roomCodeValueEl.textContent = room;
-    lobbyHostId = localServerPeerId;
     setMenuScreen("lobby");
     updateLobbyStartButtonState();
     menuStatusEl.textContent = "Комната создана.";
@@ -1517,7 +1701,7 @@ becomeHostBtnEl.addEventListener("click", async () => {
 
 joinRoomBtnEl.addEventListener("click", async () => {
   if (gameStarted) return;
-  localNickname = String(nicknameInputEl.value || "").trim() || `Player-${localClientId.slice(-4)}`;
+  syncLocalNickname();
   const code = String(roomCodeInputEl.value || "").trim().toUpperCase();
   if (!code) {
     menuStatusEl.textContent = "Введи номер комнаты.";
@@ -1534,7 +1718,7 @@ joinRoomBtnEl.addEventListener("click", async () => {
     roomCodeValueEl.textContent = code;
     setMenuScreen("lobby");
     updateLobbyStartButtonState();
-    menuStatusEl.textContent = "Подключено к комнате.";
+    if (!gameStarted) menuStatusEl.textContent = "Подключено к комнате.";
   } catch {
     menuStatusEl.textContent = "Не удалось подключиться к комнате.";
   }
@@ -1554,7 +1738,6 @@ copyRoomBtnEl.addEventListener("click", async () => {
 startRoomBtnEl.addEventListener("click", () => {
   if (!isHostRole || !isConnectedToRoom()) return;
   ws.send(JSON.stringify({ type: "room_start", roomCode }));
-  beginGame();
 });
 
 leaveLobbyBtnEl.addEventListener("click", () => {
@@ -1574,20 +1757,23 @@ leaveLobbyBtnEl.addEventListener("click", () => {
 chatSendEl.addEventListener("click", () => {
   sendChatMessage();
   closeChat();
+  tryReturnControlToGame();
 });
 
 chatInputEl.addEventListener("focus", () => {
   if (!chatOpen) chatOpen = true;
-  chatEl.classList.remove("hidden");
+  ensureChatVisible(false);
   if (document.pointerLockElement === renderer.domElement) {
     try { document.exitPointerLock(); } catch {}
   }
 });
 
 chatInputEl.addEventListener("blur", () => {
-  if (!chatOpen) {
-    chatEl.classList.add("hidden");
-  }
+  if (!chatOpen) scheduleChatAutoHide();
+});
+
+nicknameInputEl.addEventListener("input", () => {
+  syncLocalNickname();
 });
 
 
@@ -1613,6 +1799,26 @@ function sendPlayerState(dt) {
   }
 }
 
+function sendPingRequests(dt) {
+  if (!gameStarted || !isConnectedToRoom()) return;
+  const now = performance.now();
+  for (const [requestId, startedAt] of pendingPings) {
+    if (now - startedAt > 5000) {
+      pendingPings.delete(requestId);
+    }
+  }
+  pingAccumulator += dt;
+  if (pingAccumulator < 1.5) return;
+  pingAccumulator = 0;
+  const requestId = `${localServerPeerId || localClientId}-${pingRequestCounter++}`;
+  pendingPings.set(requestId, now);
+  ws.send(JSON.stringify({
+    type: "ping_request",
+    roomCode,
+    requestId,
+  }));
+}
+
 function updateRemotePlayersAnimation(dt) {
   for (const [, rp] of remotePlayers) {
     rp.root.position.lerp(new THREE.Vector3(rp.targetPos.x, rp.targetPos.y, rp.targetPos.z), Math.min(1, dt * 18));
@@ -1629,6 +1835,55 @@ function updateRemotePlayersAnimation(dt) {
     rp.leftLegPivot.rotation.x = swingOpp;
     rp.rightLegPivot.rotation.x = swing;
   }
+}
+
+function initMenuSkin3d() {
+  if (!menuSkin3dEl || menuSkinRenderer) return;
+  menuSkinScene = new THREE.Scene();
+  menuSkinScene.background = null;
+  menuSkinCamera = new THREE.PerspectiveCamera(38, 1, 0.1, 100);
+  menuSkinCamera.position.set(1.8, 1.6, 2.8);
+  menuSkinCamera.lookAt(0, 1.1, 0);
+
+  const hemiLight = new THREE.HemisphereLight(0xffffff, 0x7b6a55, 0.95);
+  menuSkinScene.add(hemiLight);
+  const dirLight = new THREE.DirectionalLight(0xffffff, 0.65);
+  dirLight.position.set(3, 4, 2);
+  menuSkinScene.add(dirLight);
+
+  menuSkinAvatar = createSteveAvatar();
+  if (menuSkinAvatar.nameSprite) menuSkinAvatar.nameSprite.visible = false;
+  menuSkinAvatar.root.position.set(0, 0, 0);
+  menuSkinScene.add(menuSkinAvatar.root);
+
+  menuSkinRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  menuSkinRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  menuSkinRenderer.setClearColor(0x000000, 0);
+  menuSkin3dEl.append(menuSkinRenderer.domElement);
+
+  function resizeSkinRenderer() {
+    if (!menuSkin3dEl || !menuSkinRenderer || !menuSkinCamera) return;
+    const w = Math.max(1, menuSkin3dEl.clientWidth);
+    const h = Math.max(1, menuSkin3dEl.clientHeight);
+    menuSkinRenderer.setSize(w, h, false);
+    menuSkinCamera.aspect = w / h;
+    menuSkinCamera.updateProjectionMatrix();
+  }
+
+  resizeSkinRenderer();
+  window.addEventListener("resize", resizeSkinRenderer);
+}
+
+function updateMenuSkin3d(dt) {
+  if (!menuSkinRenderer || !menuSkinScene || !menuSkinCamera || !menuSkinAvatar) return;
+  menuSkinAvatar.root.rotation.y += dt * 1.1;
+  menuSkinAvatar.phase += dt * 7.2;
+  const swing = Math.sin(menuSkinAvatar.phase) * 0.45;
+  menuSkinAvatar.leftArmPivot.rotation.x = swing;
+  menuSkinAvatar.rightArmPivot.rotation.x = -swing;
+  menuSkinAvatar.leftLegPivot.rotation.x = -swing;
+  menuSkinAvatar.rightLegPivot.rotation.x = swing;
+  menuSkinRenderer.render(menuSkinScene, menuSkinCamera);
 }
 
 let last = performance.now();
@@ -1648,6 +1903,7 @@ function animate(now) {
   updateTargetBlock();
   flushDirtyChunks();
   sendPlayerState(dt);
+  sendPingRequests(dt);
   updateRemotePlayersAnimation(dt);
 
   debugEl.textContent =
@@ -1659,4 +1915,18 @@ function animate(now) {
   requestAnimationFrame(animate);
 }
 
-requestAnimationFrame(animate);
+let menuLast = performance.now();
+function animateMenu(now) {
+  const dt = Math.min(MAX_STEP, (now - menuLast) / 1000);
+  menuLast = now;
+  if (!gameStarted) updateMenuSkin3d(dt);
+  requestAnimationFrame(animateMenu);
+}
+
+setMenuScreen("main");
+updateLobbyStartButtonState();
+hidePingOverlay();
+syncLocalNickname();
+
+initMenuSkin3d();
+requestAnimationFrame(animateMenu);

@@ -324,6 +324,51 @@ wss.on("connection", (ws) => {
       });
     }
 
+    if (msg.type === "nickname_update") {
+      const rc = String(msg.roomCode || state.roomCode || "").trim().toUpperCase();
+      const room = rooms.get(rc);
+      if (!room || !room.members.has(id)) return;
+      state.nickname = String(msg.nickname || state.nickname || "Player").slice(0, 16);
+
+      sendRoomToAll(room, {
+        type: "nickname_update",
+        clientId: id,
+        nickname: state.nickname,
+      });
+      sendRoomMembers(room);
+    }
+
+    if (msg.type === "ping_request") {
+      const rc = String(msg.roomCode || state.roomCode || "").trim().toUpperCase();
+      const room = rooms.get(rc);
+      if (!room || !room.members.has(id)) return;
+      const requestId = String(msg.requestId || "").slice(0, 64);
+      if (!requestId) return;
+
+      sendRoomToAll(room, {
+        type: "ping_probe",
+        requesterId: id,
+        requestId,
+      });
+    }
+
+    if (msg.type === "ping_probe_reply") {
+      const rc = String(msg.roomCode || state.roomCode || "").trim().toUpperCase();
+      const room = rooms.get(rc);
+      if (!room || !room.members.has(id)) return;
+      const requesterId = String(msg.requesterId || "");
+      const requestId = String(msg.requestId || "").slice(0, 64);
+      if (!requesterId || !requestId || !room.members.has(requesterId)) return;
+
+      const requester = players.get(requesterId);
+      if (!requester || requester.ws.readyState !== 1) return;
+      requester.ws.send(JSON.stringify({
+        type: "ping_reply",
+        clientId: id,
+        requestId,
+      }));
+    }
+
     if (msg.type === "room_start") {
       const rc = String(msg.roomCode || state.roomCode || "").trim().toUpperCase();
       const room = rooms.get(rc);
