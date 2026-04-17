@@ -13,8 +13,12 @@ const hostMessageTextEl = document.getElementById("host-message-text");
 const copyHostBtnEl = document.getElementById("btn-copy-host");
 const closeHostBtnEl = document.getElementById("btn-close-host");
 const chatLogEl = document.getElementById("chat-log");
+const chatEl = document.getElementById("chat");
 const chatInputEl = document.getElementById("chat-input");
 const chatSendEl = document.getElementById("chat-send");
+const inventoryEl = document.getElementById("inventory");
+const inventoryGridEl = document.getElementById("inventory-grid");
+const inventoryHotbarEl = document.getElementById("inventory-hotbar");
 
 const CHUNK_SIZE = 16;
 const WORLD_HEIGHT = 64;
@@ -28,6 +32,9 @@ const WALK_SPEED = 5.8;
 const SPRINT_SPEED = 8.2;
 const MAX_STEP = 0.04;
 const NET_SEND_INTERVAL = 1 / 30;
+const HOTBAR_SIZE = 9;
+const INVENTORY_MAIN_SIZE = 27;
+const INVENTORY_TOTAL_SIZE = INVENTORY_MAIN_SIZE + HOTBAR_SIZE;
 
 const BLOCKS = {
   air: { id: 0, name: "Air", solid: false, hardness: 0 },
@@ -52,6 +59,7 @@ const HOTBAR = [
   BLOCKS.sand.id,
   BLOCKS.brick.id,
   BLOCKS.snow.id,
+  BLOCKS.grass.id,
 ];
 
 let selectedSlot = 0;
@@ -61,8 +69,154 @@ let localNickname = "Player";
 let miningActive = false;
 let miningProgress = 0;
 let miningKey = null;
+let chatOpen = false;
+let inventoryOpen = false;
+let heldInventoryItem = null;
 let gameStarted = false;
 let pendingHostStart = false;
+
+const inventorySlots = new Array(INVENTORY_TOTAL_SIZE).fill(null);
+for (let i = 0; i < HOTBAR_SIZE; i += 1) {
+  inventorySlots[INVENTORY_MAIN_SIZE + i] = HOTBAR[i] ?? null;
+}
+
+const mineCracksEl = document.createElement("div");
+mineCracksEl.className = "mine-cracks";
+document.body.append(mineCracksEl);
+
+function getBlockColorById(id) {
+  return id === BLOCKS.stone.id ? "#81858d" :
+    id === BLOCKS.wood.id ? "#9b6d3f" :
+    id === BLOCKS.leaves.id ? "#3f8f49" :
+    id === BLOCKS.dirt.id ? "#8b5f3a" :
+    id === BLOCKS.sand.id ? "#d8c588" :
+    id === BLOCKS.brick.id ? "#9a4c39" :
+    id === BLOCKS.snow.id ? "#eef7ff" :
+    "#5fae4f";
+}
+
+function makeCrackTexture(stage) {
+  const seg = [
+    "M32 4L20 18", "M16 8L11 24", "M42 8L34 19", "M11 25L21 35", "M22 18L35 29",
+    "M34 19L44 31", "M21 35L15 49", "M35 29L33 50", "M33 50L46 44", "M44 31L50 21",
+  ];
+  const lines = seg.slice(0, Math.max(1, Math.min(seg.length, stage + 1)))
+    .map((d) => `<path d='${d}' stroke='rgba(12,12,12,0.88)' stroke-width='3' stroke-linecap='round'/>`)
+    .join("");
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 54 54'>${lines}</svg>`;
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+}
+
+const crackTextures = new Array(10).fill(0).map((_, i) => makeCrackTexture(i));
+
+function syncHotbarFromInventory() {
+  for (let i = 0; i < HOTBAR_SIZE; i += 1) {
+    const id = inventorySlots[INVENTORY_MAIN_SIZE + i];
+    HOTBAR[i] = id ?? BLOCKS.grass.id;
+  }
+}
+
+function resetMiningState() {
+  miningActive = false;
+  miningProgress = 0;
+  miningKey = null;
+  mineCracksEl.style.opacity = "0";
+}
+
+function isUiBlockingGame() {
+  return chatOpen || inventoryOpen;
+}
+
+function openChat() {
+  if (!gameStarted || inventoryOpen || chatOpen) return;
+  chatOpen = true;
+  chatEl.classList.remove("hidden");
+  resetMiningState();
+  keys.clear();
+  if (document.pointerLockElement === renderer.domElement) {
+    try { document.exitPointerLock(); } catch {}
+  }
+  chatInputEl.focus();
+}
+
+function closeChat() {
+  if (!chatOpen) return;
+  chatOpen = false;
+  chatInputEl.blur();
+  chatEl.classList.add("hidden");
+}
+
+function renderInventorySlot(slotIndex, selectedHotbarIndex) {
+  const slot = document.createElement("button");
+  slot.type = "button";
+  const isHotbar = slotIndex >= INVENTORY_MAIN_SIZE;
+  const hotbarIndex = isHotbar ? slotIndex - INVENTORY_MAIN_SIZE : -1;
+  const isActive = isHotbar && selectedHotbarIndex === hotbarIndex;
+  const id = inventorySlots[slotIndex];
+  slot.className = `inv-slot ${id == null ? "empty" : ""} ${isActive ? "active" : ""}`;
+
+  if (id != null) {
+    const b = BLOCK_BY_ID.get(id);
+    const item = document.createElement("div");
+    item.className = "inv-item";
+    const c = document.createElement("div");
+    c.className = "inv-item-color";
+    c.style.background = getBlockColorById(id);
+    const t = document.createElement("div");
+    t.className = "inv-item-name";
+    t.textContent = b?.name || "Block";
+    item.append(c, t);
+    slot.append(item);
+  }
+
+  slot.addEventListener("click", () => {
+    const current = inventorySlots[slotIndex];
+    if (heldInventoryItem == null && current != null) {
+      heldInventoryItem = current;
+      inventorySlots[slotIndex] = null;
+    } else if (heldInventoryItem != null) {
+      inventorySlots[slotIndex] = heldInventoryItem;
+      heldInventoryItem = current ?? null;
+    }
+    syncHotbarFromInventory();
+    renderHotbar();
+    renderInventory();
+  });
+
+  return slot;
+}
+
+function renderInventory() {
+  inventoryGridEl.innerHTML = "";
+  inventoryHotbarEl.innerHTML = "";
+  for (let i = 0; i < INVENTORY_MAIN_SIZE; i += 1) {
+    inventoryGridEl.append(renderInventorySlot(i, selectedSlot));
+  }
+  for (let i = INVENTORY_MAIN_SIZE; i < INVENTORY_TOTAL_SIZE; i += 1) {
+    inventoryHotbarEl.append(renderInventorySlot(i, selectedSlot));
+  }
+}
+
+function openInventory() {
+  if (!gameStarted || inventoryOpen || chatOpen) return;
+  inventoryOpen = true;
+  inventoryEl.classList.remove("hidden");
+  inventoryEl.setAttribute("aria-hidden", "false");
+  resetMiningState();
+  keys.clear();
+  if (document.pointerLockElement === renderer.domElement) {
+    try { document.exitPointerLock(); } catch {}
+  }
+  renderInventory();
+}
+
+function closeInventory() {
+  if (!inventoryOpen) return;
+  inventoryOpen = false;
+  heldInventoryItem = null;
+  inventoryEl.classList.add("hidden");
+  inventoryEl.setAttribute("aria-hidden", "true");
+}
 
 let ws = null;
 let roomCode = null;
@@ -782,9 +936,10 @@ function placeBlock() {
 }
 
 function updateMining(dt) {
-  if (!miningActive || !pointerLocked || !gameStarted) {
+  if (!miningActive || !pointerLocked || !gameStarted || isUiBlockingGame()) {
     miningProgress = 0;
     miningKey = null;
+    mineCracksEl.style.opacity = "0";
     return;
   }
 
@@ -792,6 +947,7 @@ function updateMining(dt) {
   if (!target) {
     miningProgress = 0;
     miningKey = null;
+    mineCracksEl.style.opacity = "0";
     return;
   }
 
@@ -799,27 +955,66 @@ function updateMining(dt) {
   if (miningKey !== key) {
     miningKey = key;
     miningProgress = 0;
+    mineCracksEl.style.opacity = "0";
   }
 
   const info = BLOCK_BY_ID.get(target.id);
   const hardness = Math.max(0.2, Number(info?.hardness || 1));
   miningProgress += dt / hardness;
 
+  const stage = Math.max(0, Math.min(9, Math.floor(miningProgress * 10)));
+  mineCracksEl.style.backgroundImage = crackTextures[stage];
+  mineCracksEl.style.opacity = "1";
+
   if (miningProgress >= 1) {
     setBlock(target.hit.x, target.hit.y, target.hit.z, BLOCK_AIR);
     miningProgress = 0;
     miningKey = null;
+    mineCracksEl.style.opacity = "0";
   }
 }
 
 document.addEventListener("keydown", (e) => {
   const active = document.activeElement;
   const isTyping = active === chatInputEl || active === nicknameInputEl || active === connectAddressEl;
+
+  if (e.code === "Escape") {
+    if (chatOpen) {
+      e.preventDefault();
+      closeChat();
+      return;
+    }
+    if (inventoryOpen) {
+      e.preventDefault();
+      closeInventory();
+      return;
+    }
+  }
+
+  if (e.code === "KeyT" && gameStarted && !inventoryOpen && !isTyping) {
+    e.preventDefault();
+    if (chatOpen) closeChat();
+    else openChat();
+    return;
+  }
+
+  if (e.code === "KeyE" && gameStarted && !chatOpen && active !== nicknameInputEl && active !== connectAddressEl) {
+    e.preventDefault();
+    if (inventoryOpen) closeInventory();
+    else openInventory();
+    return;
+  }
+
   if (isTyping && e.code !== "Escape") {
     if (active === chatInputEl && e.code === "Enter") {
       e.preventDefault();
       sendChatMessage();
+      closeChat();
     }
+    return;
+  }
+
+  if (isUiBlockingGame()) {
     return;
   }
 
@@ -834,7 +1029,7 @@ document.addEventListener("keydown", (e) => {
 
   if (e.code === "Enter") {
     e.preventDefault();
-    chatInputEl.focus();
+    openChat();
   }
 });
 
@@ -844,6 +1039,7 @@ document.addEventListener("keyup", (e) => {
 
 renderer.domElement.addEventListener("click", async () => {
   if (!gameStarted) return;
+  if (isUiBlockingGame()) return;
   if (!pointerLocked) await renderer.domElement.requestPointerLock();
 });
 
@@ -852,7 +1048,7 @@ document.addEventListener("pointerlockchange", () => {
 });
 
 document.addEventListener("mousemove", (e) => {
-  if (!pointerLocked) return;
+  if (!pointerLocked || isUiBlockingGame()) return;
   const s = 0.0022;
   player.yaw -= e.movementX * s;
   player.pitch -= e.movementY * s;
@@ -863,6 +1059,7 @@ document.addEventListener("mousemove", (e) => {
 renderer.domElement.addEventListener("contextmenu", (e) => e.preventDefault());
 renderer.domElement.addEventListener("mousedown", (e) => {
   if (!gameStarted) return;
+  if (isUiBlockingGame()) return;
   if (!pointerLocked) return;
   if (e.button === 0) {
     miningActive = true;
@@ -872,9 +1069,7 @@ renderer.domElement.addEventListener("mousedown", (e) => {
 
 renderer.domElement.addEventListener("mouseup", (e) => {
   if (e.button === 0) {
-    miningActive = false;
-    miningProgress = 0;
-    miningKey = null;
+    resetMiningState();
   }
 });
 
@@ -892,15 +1087,7 @@ function renderHotbar() {
     const c = document.createElement("div");
     c.className = "slot-color";
     const b = BLOCK_BY_ID.get(id);
-    c.style.background =
-      b.id === BLOCKS.stone.id ? "#81858d" :
-      b.id === BLOCKS.wood.id ? "#9b6d3f" :
-      b.id === BLOCKS.leaves.id ? "#3f8f49" :
-      b.id === BLOCKS.dirt.id ? "#8b5f3a" :
-      b.id === BLOCKS.sand.id ? "#d8c588" :
-      b.id === BLOCKS.brick.id ? "#9a4c39" :
-      b.id === BLOCKS.snow.id ? "#eef7ff" :
-      "#5fae4f";
+    c.style.background = getBlockColorById(id);
     const t = document.createElement("div");
     t.className = "slot-name";
     t.textContent = `${i + 1}. ${b.name}`;
@@ -1177,14 +1364,20 @@ copyHostBtnEl.addEventListener("click", async () => {
 
 chatSendEl.addEventListener("click", () => {
   sendChatMessage();
-  if (pointerLocked) {
-    try { renderer.domElement.requestPointerLock(); } catch {}
-  }
+  closeChat();
 });
 
 chatInputEl.addEventListener("focus", () => {
+  if (!chatOpen) chatOpen = true;
+  chatEl.classList.remove("hidden");
   if (document.pointerLockElement === renderer.domElement) {
     try { document.exitPointerLock(); } catch {}
+  }
+});
+
+chatInputEl.addEventListener("blur", () => {
+  if (!chatOpen) {
+    chatEl.classList.add("hidden");
   }
 });
 
@@ -1242,7 +1435,12 @@ function animate(now) {
   last = now;
 
   ensureChunksAroundPlayer();
-  updateMovement(dt);
+  if (!isUiBlockingGame()) {
+    updateMovement(dt);
+  } else {
+    player.velocity.x = 0;
+    player.velocity.z = 0;
+  }
   updateMining(dt);
   updateTargetBlock();
   flushDirtyChunks();

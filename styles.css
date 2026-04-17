@@ -286,3 +286,114 @@ canvas {
   font-weight: 700;
   cursor: pointer;
 }
+
+.inventory {
+  position: fixed;
+  inset: 0;
+  z-index: 25;
+  display: grid;
+  place-items: center;
+  background: rgba(3, 6, 12, 0.55);
+  backdrop-filter: blur(2px);
+  pointer-events: auto;
+}
+
+.inventory-panel {
+  width: min(640px, calc(100vw - 36px));
+  border: 2px solid rgba(0, 0, 0, 0.75);
+  border-radius: 12px;
+  background: linear-gradient(180deg, #bcc3ce 0%, #949daa 100%);
+  box-shadow: 0 16px 50px rgba(0, 0, 0, 0.45);
+  padding: 16px;
+}
+
+.inventory-title,
+.inventory-hotbar-title {
+  font-size: 14px;
+  font-weight: 800;
+  color: #1c2028;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 10px;
+}
+
+.inventory-hotbar-title {
+  margin-top: 14px;
+}
+
+.inventory-grid,
+.inventory-hotbar {
+  display: grid;
+  gap: 8px;
+}
+
+.inventory-grid {
+  grid-template-columns: repeat(9, minmax(0, 1fr));
+}
+
+.inventory-hotbar {
+  grid-template-columns: repeat(9, minmax(0, 1fr));
+}
+
+.inv-slot {
+  min-height: 52px;
+  border: 2px solid #2f3640;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #ecf0f5 0%, #cdd4de 100%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.55);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  color: #111822;
+  font-weight: 700;
+  user-select: none;
+}
+
+.inv-slot.active {
+  border-color: #e0a61f;
+  box-shadow: 0 0 0 2px rgba(224, 166, 31, 0.45), inset 0 0 0 1px rgba(255, 255, 255, 0.55);
+}
+
+.inv-slot.empty {
+  opacity: 0.65;
+}
+
+.inv-item {
+  display: grid;
+  place-items: center;
+  gap: 3px;
+}
+
+.inv-item-color {
+  width: 24px;
+  height: 24px;
+  border-radius: 5px;
+  border: 1px solid rgba(0, 0, 0, 0.45);
+}
+
+.inv-item-name {
+  font-size: 10px;
+  line-height: 1;
+  text-align: center;
+  max-width: 56px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mine-cracks {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 54px;
+  height: 54px;
+  border-radius: 8px;
+  z-index: 13;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.05s linear;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+}

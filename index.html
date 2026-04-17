@@ -37,14 +37,23 @@
     <div class="help">
       <div><b>Управление:</b> WASD — движение, Пробел — прыжок, Shift — спринт</div>
       <div>Мышь — обзор (кликни по экрану для захвата), ЛКМ — сломать блок, ПКМ — поставить</div>
-      <div>1..8 — выбрать блок в хотбаре</div>
+      <div>1..9 — выбрать блок в хотбаре, T — чат, E — инвентарь</div>
     </div>
   </div>
 
   <div id="crosshair" class="crosshair">+</div>
   <div id="hotbar" class="hotbar"></div>
 
-  <div id="chat" class="chat">
+  <div id="inventory" class="inventory hidden" aria-hidden="true">
+    <div class="inventory-panel">
+      <div class="inventory-title">Инвентарь</div>
+      <div id="inventory-grid" class="inventory-grid"></div>
+      <div class="inventory-hotbar-title">Хотбар</div>
+      <div id="inventory-hotbar" class="inventory-hotbar"></div>
+    </div>
+  </div>
+
+  <div id="chat" class="chat hidden">
     <div id="chat-log" class="chat-log"></div>
     <div class="chat-input-row">
       <input id="chat-input" class="chat-input" type="text" maxlength="240" placeholder="Напиши сообщение..." />
