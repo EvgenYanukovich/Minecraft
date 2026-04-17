@@ -186,6 +186,10 @@ let skinEditorPreviewRenderer = null;
 let skinEditorPreviewScene = null;
 let skinEditorPreviewCamera = null;
 let skinEditorPreviewAvatar = null;
+let skinPreviewPanelRenderer = null;
+let skinPreviewPanelScene = null;
+let skinPreviewPanelCamera = null;
+let skinPreviewPanelAvatar = null;
 let skinEditor3dRenderer = null;
 let skinEditor3dScene = null;
 let skinEditor3dCamera = null;
@@ -521,6 +525,7 @@ function pushUndoSnapshot() {
 function applyCurrentSkinToPreviews() {
   if (menuSkinAvatar) applySkinToAvatar(menuSkinAvatar, skinSourceCanvas);
   if (skinEditorPreviewAvatar) applySkinToAvatar(skinEditorPreviewAvatar, skinSourceCanvas);
+  if (skinPreviewPanelAvatar) applySkinToAvatar(skinPreviewPanelAvatar, skinSourceCanvas);
   if (pauseSkinAvatar) applySkinToAvatar(pauseSkinAvatar, skinSourceCanvas);
   renderSkinPreview2d();
 }
@@ -539,14 +544,18 @@ function setEditorOpen(open) {
     applyEditorPreviewSkinOnly();
     renderSkinPreview2d();
     skinSavedSnapshot = cloneSkinSnapshot();
-    skinEditorOrbitYaw = 0;
-    skinEditorOrbitPitch = 0;
-    skinEditorOrbitDistance = 2.8;
-    skinEditorOrbitTarget.set(0, 1.1, 0);
+    resetSkinEditorCamera();
     if (skinEditMode === "3d" && typeof skinEditorPreviewResizeFn === "function") {
       skinEditorPreviewResizeFn();
     }
   }
+}
+
+function resetSkinEditorCamera() {
+  skinEditorOrbitYaw = 0;
+  skinEditorOrbitPitch = 0;
+  skinEditorOrbitDistance = 2.8;
+  skinEditorOrbitTarget.set(0, 1.1, 0);
 }
 
 function setSkinEditMode(mode) {
@@ -1999,6 +2008,12 @@ function updateMining(dt) {
 }
 
 document.addEventListener("keydown", (e) => {
+  if (e.code === "KeyF" && skinEditorOpen) {
+    e.preventDefault();
+    resetSkinEditorCamera();
+    return;
+  }
+
   const active = document.activeElement;
   const isTyping = active === chatInputEl || active === nicknameInputEl || active === roomCodeInputEl;
 
@@ -3083,6 +3098,53 @@ function initSkinEditorPreview() {
   });
 }
 
+function initSkinPreviewPanel3d() {
+  if (!skinPreview3dEl || skinPreviewPanelRenderer) return;
+  skinPreviewPanelScene = new THREE.Scene();
+  skinPreviewPanelCamera = new THREE.PerspectiveCamera(40, 1, 0.1, 100);
+  skinPreviewPanelCamera.position.set(1.8, 1.6, 2.8);
+  skinPreviewPanelCamera.lookAt(0, 1.1, 0);
+
+  const hemiLight = new THREE.HemisphereLight(0xffffff, 0x7b6a55, 0.95);
+  skinPreviewPanelScene.add(hemiLight);
+  const dirLight = new THREE.DirectionalLight(0xffffff, 0.7);
+  dirLight.position.set(3, 4, 2);
+  skinPreviewPanelScene.add(dirLight);
+
+  skinPreviewPanelAvatar = createSteveAvatar({ skinCanvas: skinSourceCanvas });
+  if (skinPreviewPanelAvatar.nameSprite) skinPreviewPanelAvatar.nameSprite.visible = false;
+  skinPreviewPanelScene.add(skinPreviewPanelAvatar.root);
+
+  skinPreviewPanelRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  skinPreviewPanelRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  skinPreviewPanelRenderer.setClearColor(0x000000, 0);
+  skinPreview3dEl.append(skinPreviewPanelRenderer.domElement);
+
+  const resize = () => {
+    if (!skinPreviewPanelRenderer || !skinPreviewPanelCamera || !skinPreview3dEl) return;
+    const w = Math.max(1, skinPreview3dEl.clientWidth);
+    const h = Math.max(1, skinPreview3dEl.clientHeight);
+    skinPreviewPanelRenderer.setSize(w, h, false);
+    skinPreviewPanelCamera.aspect = w / h;
+    skinPreviewPanelCamera.updateProjectionMatrix();
+  };
+  resize();
+  window.addEventListener("resize", resize);
+}
+
+function updateSkinPreviewPanel3d(dt) {
+  if (!skinEditorOpen || skinEditMode !== "2d") return;
+  if (!skinPreviewPanelRenderer || !skinPreviewPanelScene || !skinPreviewPanelCamera || !skinPreviewPanelAvatar) return;
+  skinPreviewPanelAvatar.root.rotation.y += dt * 1.05;
+  skinPreviewPanelAvatar.phase += dt * 6.8;
+  const swing = Math.sin(skinPreviewPanelAvatar.phase) * 0.42;
+  skinPreviewPanelAvatar.leftArmPivot.rotation.x = swing;
+  skinPreviewPanelAvatar.rightArmPivot.rotation.x = -swing;
+  skinPreviewPanelAvatar.leftLegPivot.rotation.x = -swing;
+  skinPreviewPanelAvatar.rightLegPivot.rotation.x = swing;
+  skinPreviewPanelRenderer.render(skinPreviewPanelScene, skinPreviewPanelCamera);
+}
+
 function updateSkinEditorPreview(dt) {
   if (!skinEditorPreviewRenderer || !skinEditorPreviewScene || !skinEditorPreviewCamera || !skinEditorPreviewAvatar) return;
   if (!skinEditorOpen) return;
@@ -3369,6 +3431,7 @@ function animateMenu(now) {
     updateMenuPanorama(dt);
     updateMenuSkin3d(dt);
     updateSkinEditorPreview(dt);
+    updateSkinPreviewPanel3d(dt);
   }
   updatePauseSkin3d(dt);
   requestAnimationFrame(animateMenu);
@@ -3386,6 +3449,7 @@ Promise.resolve()
     initPauseSkin3d();
     initMenuPanorama();
     initSkinEditorPreview();
+    initSkinPreviewPanel3d();
     initSkinEditorUi();
     applyCurrentSkinToPreviews();
     syncSkinToCanvasView();
