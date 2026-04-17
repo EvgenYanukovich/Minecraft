@@ -32,25 +32,40 @@ const menuSkin3dEl = document.getElementById("menu-skin-3d");
 const pingOverlayEl = document.getElementById("ping-overlay");
 const pingListEl = document.getElementById("ping-list");
 const menuPanoramaEl = document.getElementById("menu-panorama");
+const pauseMenuEl = document.getElementById("pause-menu");
+const pauseContinueEl = document.getElementById("pause-continue");
+const pauseSettingsEl = document.getElementById("pause-settings");
+const pauseMainMenuEl = document.getElementById("pause-main-menu");
+const pauseParticipantsEl = document.getElementById("pause-participants");
+const pauseCustomizeSkinEl = document.getElementById("pause-customize-skin");
+const pauseNicknameInputEl = document.getElementById("pause-nickname-input");
+const pauseSkin3dEl = document.getElementById("pause-skin-3d");
 const skinEditorEl = document.getElementById("skin-editor");
 const skinEditorCanvasEl = document.getElementById("skin-editor-canvas");
 const skinPaletteEl = document.getElementById("skin-palette");
 const skinColorEl = document.getElementById("skin-color");
 const toolBrushEl = document.getElementById("tool-brush");
 const toolEraserEl = document.getElementById("tool-eraser");
+const toolPickerEl = document.getElementById("tool-picker");
+const toolHandEl = document.getElementById("tool-hand");
+const editMode2dEl = document.getElementById("edit-mode-2d");
+const editMode3dEl = document.getElementById("edit-mode-3d");
 const toolUndoEl = document.getElementById("tool-undo");
 const toolRedoEl = document.getElementById("tool-redo");
 const toolSizeEl = document.getElementById("tool-size");
 const partHeadEl = document.getElementById("part-head");
 const partBodyEl = document.getElementById("part-body");
-const partArmsEl = document.getElementById("part-arms");
-const partLegsEl = document.getElementById("part-legs");
+const partRightArmEl = document.getElementById("part-right-arm");
+const partLeftArmEl = document.getElementById("part-left-arm");
+const partRightLegEl = document.getElementById("part-right-leg");
+const partLeftLegEl = document.getElementById("part-left-leg");
 const skinImportBtnEl = document.getElementById("skin-import");
 const skinExportBtnEl = document.getElementById("skin-export");
 const skinImportFileEl = document.getElementById("skin-import-file");
 const skinSaveBtnEl = document.getElementById("skin-save");
 const skinCloseBtnEl = document.getElementById("skin-close");
-const skinPreview3dEl = document.getElementById("skin-preview-3d");
+const skinPreview2dEl = document.getElementById("skin-preview-2d");
+const skinEditor3dEl = document.getElementById("skin-editor-3d");
 const inventoryEl = document.getElementById("inventory");
 const inventoryHeldEl = document.getElementById("inventory-held");
 const inventoryGridEl = document.getElementById("inventory-grid");
@@ -120,6 +135,7 @@ let chatHideTimer = null;
 let chatFadeTimer = null;
 let chatAutoVisible = false;
 let tabHeld = false;
+let pauseOpen = false;
 let pingAccumulator = 0;
 let pingRequestCounter = 1;
 const pendingPings = new Map();
@@ -138,11 +154,14 @@ const SKIN_MAX_DATA_URL_LENGTH = 350000;
 let localSkinDataUrl = null;
 let skinEditorOpen = false;
 let skinTool = "brush";
+let skinEditMode = "2d";
 let skinBrushSize = 1;
 let skinDrawing = false;
 let skinUndoStack = [];
 let skinRedoStack = [];
 let skinSnapshotCaptured = false;
+let skinSpaceHeld = false;
+let skinOrbiting = false;
 let skinSourceSize = 64;
 
 const skinSourceCanvas = document.createElement("canvas");
@@ -159,6 +178,13 @@ let skinEditorPreviewRenderer = null;
 let skinEditorPreviewScene = null;
 let skinEditorPreviewCamera = null;
 let skinEditorPreviewAvatar = null;
+let skinEditor3dRenderer = null;
+let skinEditor3dScene = null;
+let skinEditor3dCamera = null;
+let skinEditor3dAvatar = null;
+let skinEditorOrbitYaw = 0;
+let skinEditorOrbitPitch = 0;
+let skinEditorOrbitDistance = 2.8;
 
 const SKIN_PALETTE = [
   "#000000", "#ffffff", "#c68642", "#8f5d2b", "#2e6fb7", "#1f4f8b",
@@ -183,13 +209,15 @@ const SKIN_PART_REGIONS = {
     skinRect(17, 37, 20, 48), skinRect(21, 37, 28, 48),
     skinRect(29, 37, 32, 48), skinRect(33, 37, 40, 48),
   ],
-  arms: [
+  right_arm: [
     skinRect(45, 17, 48, 20), skinRect(49, 17, 52, 20),
     skinRect(41, 21, 44, 32), skinRect(45, 21, 48, 32),
     skinRect(49, 21, 52, 32), skinRect(53, 21, 56, 32),
     skinRect(45, 33, 48, 36), skinRect(49, 33, 52, 36),
     skinRect(41, 37, 44, 48), skinRect(45, 37, 48, 48),
     skinRect(49, 37, 52, 48), skinRect(53, 37, 56, 48),
+  ],
+  left_arm: [
     skinRect(37, 49, 40, 52), skinRect(41, 49, 44, 52),
     skinRect(33, 53, 36, 64), skinRect(37, 53, 40, 64),
     skinRect(41, 53, 44, 64), skinRect(45, 53, 48, 64),
@@ -197,13 +225,15 @@ const SKIN_PART_REGIONS = {
     skinRect(49, 53, 52, 64), skinRect(53, 53, 56, 64),
     skinRect(57, 53, 60, 64), skinRect(61, 53, 64, 64),
   ],
-  legs: [
+  right_leg: [
     skinRect(5, 17, 8, 20), skinRect(9, 17, 12, 20),
     skinRect(1, 21, 4, 32), skinRect(5, 21, 8, 32),
     skinRect(9, 21, 12, 32), skinRect(13, 21, 16, 32),
     skinRect(5, 33, 8, 36), skinRect(9, 33, 12, 36),
     skinRect(1, 37, 4, 48), skinRect(5, 37, 8, 48),
     skinRect(9, 37, 12, 48), skinRect(13, 37, 16, 48),
+  ],
+  left_leg: [
     skinRect(21, 49, 24, 52), skinRect(25, 49, 28, 52),
     skinRect(17, 53, 20, 64), skinRect(21, 53, 24, 64),
     skinRect(25, 53, 28, 64), skinRect(29, 53, 32, 64),
@@ -235,6 +265,10 @@ let panoramaScene = null;
 let panoramaCamera = null;
 let panoramaTime = 0;
 const panoramaHeightMap = new Map();
+let pauseSkinRenderer = null;
+let pauseSkinScene = null;
+let pauseSkinCamera = null;
+let pauseSkinAvatar = null;
 
 function panoramaHeightKey(x, z) {
   return `${x},${z}`;
@@ -394,8 +428,10 @@ function getPartEnabledForPixel(x, y) {
   const checks = [
     ["head", partHeadEl?.checked !== false],
     ["body", partBodyEl?.checked !== false],
-    ["arms", partArmsEl?.checked !== false],
-    ["legs", partLegsEl?.checked !== false],
+    ["right_arm", partRightArmEl?.checked !== false],
+    ["left_arm", partLeftArmEl?.checked !== false],
+    ["right_leg", partRightLegEl?.checked !== false],
+    ["left_leg", partLeftLegEl?.checked !== false],
   ];
   for (const [part, enabled] of checks) {
     for (const r of SKIN_PART_REGIONS[part]) {
@@ -443,6 +479,8 @@ function pushUndoSnapshot() {
 function applyCurrentSkinToPreviews() {
   if (menuSkinAvatar) applySkinToAvatar(menuSkinAvatar, skinSourceCanvas);
   if (skinEditorPreviewAvatar) applySkinToAvatar(skinEditorPreviewAvatar, skinSourceCanvas);
+  if (pauseSkinAvatar) applySkinToAvatar(pauseSkinAvatar, skinSourceCanvas);
+  renderSkinPreview2d();
 }
 
 function setEditorOpen(open) {
@@ -452,7 +490,16 @@ function setEditorOpen(open) {
   if (open) {
     syncSkinToCanvasView();
     applyCurrentSkinToPreviews();
+    renderSkinPreview2d();
+    skinEditorOrbitYaw = 0;
+    skinEditorOrbitPitch = 0;
   }
+}
+
+function setSkinEditMode(mode) {
+  skinEditMode = mode === "3d" ? "3d" : "2d";
+  skinEditorCanvasEl.classList.toggle("hidden", skinEditMode !== "2d");
+  skinEditor3dEl.classList.toggle("hidden", skinEditMode !== "3d");
 }
 
 function getBlockColorById(id) {
@@ -509,7 +556,7 @@ function resetMiningState() {
 }
 
 function isUiBlockingGame() {
-  return chatOpen || inventoryOpen;
+  return chatOpen || inventoryOpen || pauseOpen || skinEditorOpen;
 }
 
 function ensureChatVisible(autoMode) {
@@ -631,11 +678,15 @@ function renderParticipants() {
 
 function syncLocalNickname() {
   const prev = localNickname;
-  const next = String(nicknameInputEl.value || "").trim() || `Player-${localClientId.slice(-4)}`;
+  const raw = String((pauseOpen ? pauseNicknameInputEl.value : nicknameInputEl.value) || "").trim();
+  const next = raw || `Player-${localClientId.slice(-4)}`;
   localNickname = next;
+  nicknameInputEl.value = localNickname;
+  if (pauseNicknameInputEl) pauseNicknameInputEl.value = localNickname;
   if (localServerPeerId) {
     ensureParticipantById(localServerPeerId, localNickname);
     renderParticipants();
+    renderPauseParticipants();
     updatePingOverlay();
   }
   if (prev !== localNickname && isConnectedToRoom()) {
@@ -666,10 +717,86 @@ function resetLobbyState() {
   lobbyHostId = null;
   roomCodeValueEl.textContent = "------";
   renderParticipants();
+  renderPauseParticipants();
 }
 
 function updateLobbyStartButtonState() {
   startRoomBtnEl.disabled = !(localServerPeerId && localServerPeerId === lobbyHostId);
+}
+
+function appendSystemMessage(text) {
+  appendChatMessage("Система", text);
+}
+
+function renderPauseParticipants() {
+  if (!pauseParticipantsEl) return;
+  pauseParticipantsEl.innerHTML = "";
+  if (!roomParticipants.length) {
+    const empty = document.createElement("div");
+    empty.className = "mc-room-member";
+    empty.textContent = "Пока нет участников";
+    pauseParticipantsEl.append(empty);
+    return;
+  }
+
+  const ordered = [...roomParticipants].sort((a, b) => {
+    if (a.id === lobbyHostId) return -1;
+    if (b.id === lobbyHostId) return 1;
+    return 0;
+  });
+
+  ordered.forEach((participant) => {
+    const row = document.createElement("div");
+    row.className = "mc-room-member";
+    const name = document.createElement("span");
+    name.textContent = getParticipantDisplayName(participant);
+    row.append(name);
+
+    if (participant.id === lobbyHostId) {
+      const badge = document.createElement("span");
+      badge.className = "mc-badge-host";
+      badge.textContent = "Хост";
+      row.append(badge);
+    }
+
+    const canKick = Boolean(
+      localServerPeerId &&
+      lobbyHostId &&
+      localServerPeerId === lobbyHostId &&
+      participant.id !== localServerPeerId
+    );
+    if (canKick) {
+      const kick = document.createElement("button");
+      kick.type = "button";
+      kick.className = "pause-kick-btn";
+      kick.textContent = "Кик";
+      kick.addEventListener("click", () => {
+        if (!isConnectedToRoom()) return;
+        ws.send(JSON.stringify({ type: "kick_player", roomCode, targetId: participant.id }));
+      });
+      row.append(kick);
+    }
+
+    pauseParticipantsEl.append(row);
+  });
+}
+
+function setPauseOpen(open) {
+  if (!gameStarted) return;
+  pauseOpen = open;
+  pauseMenuEl.classList.toggle("hidden", !open);
+  pauseMenuEl.setAttribute("aria-hidden", open ? "false" : "true");
+  if (open) {
+    resetMiningState();
+    keys.clear();
+    pauseNicknameInputEl.value = nicknameInputEl.value;
+    renderPauseParticipants();
+    if (document.pointerLockElement === renderer.domElement) {
+      try { document.exitPointerLock(); } catch {}
+    }
+  } else {
+    tryReturnControlToGame();
+  }
 }
 
 function openChat() {
@@ -1289,6 +1416,48 @@ function createSteveAvatar(options = {}) {
   return avatar;
 }
 
+function initPauseSkin3d() {
+  if (!pauseSkin3dEl || pauseSkinRenderer) return;
+  pauseSkinScene = new THREE.Scene();
+  pauseSkinCamera = new THREE.PerspectiveCamera(40, 1, 0.1, 100);
+  pauseSkinCamera.position.set(1.8, 1.6, 2.8);
+  pauseSkinCamera.lookAt(0, 1.1, 0);
+  const hemiLight = new THREE.HemisphereLight(0xffffff, 0x7b6a55, 0.95);
+  const dirLight = new THREE.DirectionalLight(0xffffff, 0.65);
+  dirLight.position.set(3, 4, 2);
+  pauseSkinScene.add(hemiLight);
+  pauseSkinScene.add(dirLight);
+  pauseSkinAvatar = createSteveAvatar({ skinCanvas: skinSourceCanvas });
+  if (pauseSkinAvatar.nameSprite) pauseSkinAvatar.nameSprite.visible = false;
+  pauseSkinScene.add(pauseSkinAvatar.root);
+  pauseSkinRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  pauseSkinRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  pauseSkinRenderer.setClearColor(0x000000, 0);
+  pauseSkin3dEl.append(pauseSkinRenderer.domElement);
+  const resize = () => {
+    if (!pauseSkinRenderer || !pauseSkinCamera) return;
+    const w = Math.max(1, pauseSkin3dEl.clientWidth);
+    const h = Math.max(1, pauseSkin3dEl.clientHeight);
+    pauseSkinRenderer.setSize(w, h, false);
+    pauseSkinCamera.aspect = w / h;
+    pauseSkinCamera.updateProjectionMatrix();
+  };
+  resize();
+  window.addEventListener("resize", resize);
+}
+
+function updatePauseSkin3d(dt) {
+  if (!pauseOpen || !pauseSkinRenderer || !pauseSkinScene || !pauseSkinCamera || !pauseSkinAvatar) return;
+  pauseSkinAvatar.root.rotation.y += dt * 1.1;
+  pauseSkinAvatar.phase += dt * 7.2;
+  const swing = Math.sin(pauseSkinAvatar.phase) * 0.45;
+  pauseSkinAvatar.leftArmPivot.rotation.x = swing;
+  pauseSkinAvatar.rightArmPivot.rotation.x = -swing;
+  pauseSkinAvatar.leftLegPivot.rotation.x = -swing;
+  pauseSkinAvatar.rightLegPivot.rotation.x = swing;
+  pauseSkinRenderer.render(pauseSkinScene, pauseSkinCamera);
+}
+
 function updateAvatarNickname(avatar, nickname) {
   avatar.nickname = nickname;
   const ctx = avatar.nameCtx;
@@ -1754,17 +1923,22 @@ document.addEventListener("keydown", (e) => {
   const active = document.activeElement;
   const isTyping = active === chatInputEl || active === nicknameInputEl || active === roomCodeInputEl;
 
-    if (e.code === "Escape") {
-      if (chatOpen) {
-        e.preventDefault();
-        closeChat();
-        if (active && typeof active.blur === "function") active.blur();
-        return;
+  if (e.code === "Escape") {
+    if (chatOpen) {
+      e.preventDefault();
+      closeChat();
+      if (active && typeof active.blur === "function") active.blur();
+      return;
     }
     if (inventoryOpen) {
       e.preventDefault();
       closeInventory();
       if (active && typeof active.blur === "function") active.blur();
+      return;
+    }
+    if (gameStarted && !skinEditorOpen) {
+      e.preventDefault();
+      setPauseOpen(!pauseOpen);
       return;
     }
   }
@@ -1934,6 +2108,8 @@ function isConnectedToRoom() {
 function returnToMenuForReconnect(statusText) {
   gameStarted = false;
   pointerLocked = false;
+  pauseOpen = false;
+  pauseMenuEl.classList.add("hidden");
   startMenuEl.classList.remove("hidden");
   menuPanoramaEl?.classList.remove("hidden");
   hidePingOverlay();
@@ -2111,6 +2287,7 @@ function connectToRoom(code, mode) {
           nickname: String(item.nickname || "Player").slice(0, 16),
         })).filter((item) => item.id);
         renderParticipants();
+        renderPauseParticipants();
         updateLobbyStartButtonState();
         updatePingOverlay();
       }
@@ -2126,6 +2303,7 @@ function connectToRoom(code, mode) {
       if (msg.type === "peer_joined") {
         ensureParticipantById(String(msg.clientId || ""), String(msg.nickname || "Player"));
         renderParticipants();
+        renderPauseParticipants();
         updatePingOverlay();
         if (!gameStarted) menuStatusEl.textContent = "Игрок подключился к комнате.";
       }
@@ -2133,6 +2311,7 @@ function connectToRoom(code, mode) {
       if (msg.type === "nickname_update") {
         ensureParticipantById(String(msg.clientId || ""), String(msg.nickname || "Player"));
         renderParticipants();
+        renderPauseParticipants();
         updatePingOverlay();
       }
 
@@ -2162,15 +2341,35 @@ function connectToRoom(code, mode) {
       }
 
       if (msg.type === "peer_left") {
+        const leftId = String(msg.clientId || "");
+        const p = roomParticipants.find((x) => x.id === leftId);
+        const leftName = p ? getParticipantDisplayName(p) : "Player";
+        const reason = String(msg.reason || "left");
         removeParticipantById(String(msg.clientId || ""));
         renderParticipants();
+        renderPauseParticipants();
         playerPings.delete(String(msg.clientId || ""));
         updatePingOverlay();
         handlePeerMessage(msg.clientId, { type: "peer_left", id: msg.clientId });
+        if (reason === "kick") {
+          appendSystemMessage(`Игрок ${leftName} был кикнут с комнаты.`);
+        } else {
+          appendSystemMessage(`Игрок ${leftName} покинул игру.`);
+        }
       }
 
       if (msg.type === "room_start") {
         beginGame();
+      }
+
+      if (msg.type === "kicked") {
+        if (String(msg.targetId || "") === localServerPeerId) {
+          try { ws.close(); } catch {}
+          ws = null;
+          roomCode = null;
+          setPauseOpen(false);
+          returnToMenuForReconnect("Тебя кикнули из комнаты.");
+        }
       }
 
       if (msg.type === "world_sync") {
@@ -2179,6 +2378,13 @@ function connectToRoom(code, mode) {
 
       if (msg.type === "chat_message") {
         appendChatMessage(msg.nickname || "Player", msg.text || "");
+      }
+
+      if (msg.type === "system_event") {
+        const n = String(msg.nickname || "Player").slice(0, 16);
+        if (msg.event === "player_joined") {
+          appendSystemMessage(`Игрок ${n} подключился к игре.`);
+        }
       }
 
       if (msg.type === "ping_reply") {
@@ -2210,6 +2416,8 @@ function connectToRoom(code, mode) {
 function beginGame() {
   if (gameStarted) return;
   gameStarted = true;
+  pauseOpen = false;
+  pauseMenuEl.classList.add("hidden");
   startMenuEl.classList.add("hidden");
   menuPanoramaEl?.classList.add("hidden");
   scheduleChatAutoHide();
@@ -2324,8 +2532,12 @@ copyRoomBtnEl.addEventListener("click", async () => {
 });
 
 startRoomBtnEl.addEventListener("click", () => {
-  if (!isHostRole || !isConnectedToRoom()) return;
-  ws.send(JSON.stringify({ type: "room_start", roomCode }));
+  if (!isConnectedToRoom()) return;
+  if (isHostRole) {
+    ws.send(JSON.stringify({ type: "room_start", roomCode }));
+  } else {
+    beginGame();
+  }
 });
 
 leaveLobbyBtnEl.addEventListener("click", () => {
@@ -2340,6 +2552,33 @@ leaveLobbyBtnEl.addEventListener("click", () => {
   resetLobbyState();
   setMenuScreen("multiplayer");
   menuStatusEl.textContent = "Ты вышел из комнаты.";
+});
+
+pauseContinueEl.addEventListener("click", () => {
+  setPauseOpen(false);
+});
+
+pauseSettingsEl.addEventListener("click", () => {
+  menuStatusEl.textContent = "Настройки будут добавлены позже.";
+});
+
+pauseMainMenuEl.addEventListener("click", () => {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    try { ws.close(); } catch {}
+  }
+  ws = null;
+  roomCode = null;
+  gameStarted = false;
+  setPauseOpen(false);
+  returnToMenuForReconnect("Возврат в главное меню.");
+});
+
+pauseCustomizeSkinEl.addEventListener("click", () => {
+  setEditorOpen(true);
+});
+
+pauseNicknameInputEl.addEventListener("input", () => {
+  syncLocalNickname();
 });
 
 chatSendEl.addEventListener("click", () => {
@@ -2576,7 +2815,7 @@ function initMenuSkin3d() {
 }
 
 function initSkinEditorPreview() {
-  if (!skinPreview3dEl || skinEditorPreviewRenderer) return;
+  if (!skinEditor3dEl || skinEditorPreviewRenderer) return;
   skinEditorPreviewScene = new THREE.Scene();
   skinEditorPreviewCamera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
   skinEditorPreviewCamera.position.set(1.9, 1.6, 2.8);
@@ -2595,24 +2834,136 @@ function initSkinEditorPreview() {
   skinEditorPreviewRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   skinEditorPreviewRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   skinEditorPreviewRenderer.setClearColor(0x000000, 0);
-  skinPreview3dEl.append(skinEditorPreviewRenderer.domElement);
+  skinEditor3dEl.append(skinEditorPreviewRenderer.domElement);
 
   function resizePreview() {
-    if (!skinEditorPreviewRenderer || !skinEditorPreviewCamera || !skinPreview3dEl) return;
-    const w = Math.max(1, skinPreview3dEl.clientWidth);
-    const h = Math.max(1, skinPreview3dEl.clientHeight);
+    if (!skinEditorPreviewRenderer || !skinEditorPreviewCamera || !skinEditor3dEl) return;
+    const w = Math.max(1, skinEditor3dEl.clientWidth);
+    const h = Math.max(1, skinEditor3dEl.clientHeight);
     skinEditorPreviewRenderer.setSize(w, h, false);
     skinEditorPreviewCamera.aspect = w / h;
     skinEditorPreviewCamera.updateProjectionMatrix();
   }
   resizePreview();
   window.addEventListener("resize", resizePreview);
+
+  skinEditor3dEl.addEventListener("mousedown", (evt) => {
+    if (!skinEditorOpen || skinEditMode !== "3d") return;
+    const useHand = skinTool === "hand" || skinSpaceHeld;
+    if (useHand) {
+      skinOrbiting = true;
+      return;
+    }
+    const ray = new THREE.Raycaster();
+    const rect = skinEditor3dEl.getBoundingClientRect();
+    const nx = ((evt.clientX - rect.left) / rect.width) * 2 - 1;
+    const ny = -(((evt.clientY - rect.top) / rect.height) * 2 - 1);
+    ray.setFromCamera(new THREE.Vector2(nx, ny), skinEditorPreviewCamera);
+    const meshes = [
+      skinEditorPreviewAvatar.headMesh,
+      skinEditorPreviewAvatar.bodyMesh,
+      skinEditorPreviewAvatar.leftArmMesh,
+      skinEditorPreviewAvatar.rightArmMesh,
+      skinEditorPreviewAvatar.leftLegMesh,
+      skinEditorPreviewAvatar.rightLegMesh,
+      skinEditorPreviewAvatar.headOverlayMesh,
+      skinEditorPreviewAvatar.bodyOverlayMesh,
+      skinEditorPreviewAvatar.leftArmOverlayMesh,
+      skinEditorPreviewAvatar.rightArmOverlayMesh,
+      skinEditorPreviewAvatar.leftLegOverlayMesh,
+      skinEditorPreviewAvatar.rightLegOverlayMesh,
+    ].filter(Boolean);
+    const hits = ray.intersectObjects(meshes, false);
+    if (!hits.length) return;
+
+    const hit = hits[0];
+    const uv = hit.uv;
+    const materialIndex = hit.face?.materialIndex ?? 0;
+    const partName = hit.object === skinEditorPreviewAvatar.headMesh || hit.object === skinEditorPreviewAvatar.headOverlayMesh ? "head" :
+      hit.object === skinEditorPreviewAvatar.bodyMesh || hit.object === skinEditorPreviewAvatar.bodyOverlayMesh ? "body" :
+      hit.object === skinEditorPreviewAvatar.leftArmMesh || hit.object === skinEditorPreviewAvatar.leftArmOverlayMesh ? "arm_left" :
+      hit.object === skinEditorPreviewAvatar.rightArmMesh || hit.object === skinEditorPreviewAvatar.rightArmOverlayMesh ? "arm_right" :
+      hit.object === skinEditorPreviewAvatar.leftLegMesh || hit.object === skinEditorPreviewAvatar.leftLegOverlayMesh ? "leg_left" : "leg_right";
+    const isOverlay = hit.object.name?.includes("overlay") ||
+      [skinEditorPreviewAvatar.headOverlayMesh, skinEditorPreviewAvatar.bodyOverlayMesh, skinEditorPreviewAvatar.leftArmOverlayMesh, skinEditorPreviewAvatar.rightArmOverlayMesh, skinEditorPreviewAvatar.leftLegOverlayMesh, skinEditorPreviewAvatar.rightLegOverlayMesh].includes(hit.object);
+
+    const resolveFaceRect = () => {
+      const map = (r) => ({ x: r.x, y: r.y, w: r.w, h: r.h });
+      if (partName === "head") {
+        const set = isOverlay ? [skinRect(49,9,56,16), skinRect(33,9,40,16), skinRect(41,1,48,8), skinRect(49,1,56,8), skinRect(41,9,48,16), skinRect(57,9,64,16)] : [skinRect(17,9,24,16), skinRect(1,9,8,16), skinRect(9,1,16,8), skinRect(17,1,24,8), skinRect(9,9,16,16), skinRect(25,9,32,16)];
+        return map(set[materialIndex] || set[0]);
+      }
+      if (partName === "body") {
+        const set = isOverlay ? [skinRect(29,37,32,48), skinRect(17,37,20,48), skinRect(21,33,28,36), skinRect(29,33,36,36), skinRect(21,37,28,48), skinRect(33,37,40,48)] : [skinRect(29,21,32,32), skinRect(17,21,20,32), skinRect(21,17,28,20), skinRect(29,17,36,20), skinRect(21,21,28,32), skinRect(33,21,40,32)];
+        return map(set[materialIndex] || set[0]);
+      }
+      if (partName === "arm_right") {
+        const set = isOverlay ? [skinRect(49,37,52,48), skinRect(41,37,44,48), skinRect(45,33,48,36), skinRect(49,33,52,36), skinRect(45,37,48,48), skinRect(53,37,56,48)] : [skinRect(49,21,52,32), skinRect(41,21,44,32), skinRect(45,17,48,20), skinRect(49,17,52,20), skinRect(45,21,48,32), skinRect(53,21,56,32)];
+        return map(set[materialIndex] || set[0]);
+      }
+      if (partName === "arm_left") {
+        const set = isOverlay ? [skinRect(57,53,60,64), skinRect(49,53,52,64), skinRect(53,49,56,52), skinRect(57,49,60,52), skinRect(53,53,56,64), skinRect(61,53,64,64)] : [skinRect(41,53,44,64), skinRect(33,53,36,64), skinRect(37,49,40,52), skinRect(41,49,44,52), skinRect(37,53,40,64), skinRect(45,53,48,64)];
+        return map(set[materialIndex] || set[0]);
+      }
+      if (partName === "leg_right") {
+        const set = isOverlay ? [skinRect(9,37,12,48), skinRect(1,37,4,48), skinRect(5,33,8,36), skinRect(9,33,12,36), skinRect(5,37,8,48), skinRect(13,37,16,48)] : [skinRect(9,21,12,32), skinRect(1,21,4,32), skinRect(5,17,8,20), skinRect(9,17,12,20), skinRect(5,21,8,32), skinRect(13,21,16,32)];
+        return map(set[materialIndex] || set[0]);
+      }
+      const set = isOverlay ? [skinRect(9,53,12,64), skinRect(1,53,4,64), skinRect(5,49,8,52), skinRect(9,49,12,52), skinRect(5,53,8,64), skinRect(13,53,16,64)] : [skinRect(25,53,28,64), skinRect(17,53,20,64), skinRect(21,49,24,52), skinRect(25,49,28,52), skinRect(21,53,24,64), skinRect(29,53,32,64)];
+      return map(set[materialIndex] || set[0]);
+    };
+
+    const faceRect = resolveFaceRect();
+    const px = Math.max(0, Math.min(faceRect.w - 1, Math.floor(uv.x * faceRect.w)));
+    const py = Math.max(0, Math.min(faceRect.h - 1, Math.floor((1 - uv.y) * faceRect.h)));
+    const tx = faceRect.x + px;
+    const ty = faceRect.y + py;
+    if (!getPartEnabledForPixel(tx, ty)) return;
+
+    if (!skinSnapshotCaptured) {
+      pushUndoSnapshot();
+      skinRedoStack = [];
+      skinSnapshotCaptured = true;
+    }
+    if (skinTool === "picker") {
+      const data = skinSourceCtx.getImageData(tx, ty, 1, 1).data;
+      skinColorEl.value = `#${[data[0], data[1], data[2]].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+      skinSnapshotCaptured = false;
+      return;
+    }
+    if (skinTool === "eraser") {
+      skinSourceCtx.clearRect(tx, ty, 1, 1);
+    } else {
+      skinSourceCtx.fillStyle = skinColorEl.value;
+      skinSourceCtx.fillRect(tx, ty, 1, 1);
+    }
+    syncSkinToCanvasView();
+    applyCurrentSkinToPreviews();
+    renderSkinPreview2d();
+  });
+
+  skinEditor3dEl.addEventListener("mousemove", (evt) => {
+    if (!skinOrbiting) return;
+    evt.preventDefault();
+    skinEditorOrbitYaw -= evt.movementX * 0.008;
+    skinEditorOrbitPitch = Math.max(-0.7, Math.min(0.7, skinEditorOrbitPitch - evt.movementY * 0.006));
+  });
+  window.addEventListener("mouseup", () => { skinOrbiting = false; });
 }
 
 function updateSkinEditorPreview(dt) {
   if (!skinEditorPreviewRenderer || !skinEditorPreviewScene || !skinEditorPreviewCamera || !skinEditorPreviewAvatar) return;
   if (!skinEditorOpen) return;
-  skinEditorPreviewAvatar.root.rotation.y += dt * 1.15;
+  const cp = Math.cos(skinEditorOrbitPitch);
+  skinEditorPreviewCamera.position.set(
+    Math.sin(skinEditorOrbitYaw) * skinEditorOrbitDistance * cp,
+    1.3 + Math.sin(skinEditorOrbitPitch) * skinEditorOrbitDistance,
+    Math.cos(skinEditorOrbitYaw) * skinEditorOrbitDistance * cp,
+  );
+  skinEditorPreviewCamera.lookAt(0, 1.1, 0);
+  if (!skinOrbiting) {
+    skinEditorOrbitYaw += dt * 0.6;
+  }
   skinEditorPreviewAvatar.phase += dt * 6.4;
   const swing = Math.sin(skinEditorPreviewAvatar.phase) * 0.4;
   skinEditorPreviewAvatar.leftArmPivot.rotation.x = swing;
@@ -2620,6 +2971,14 @@ function updateSkinEditorPreview(dt) {
   skinEditorPreviewAvatar.leftLegPivot.rotation.x = -swing;
   skinEditorPreviewAvatar.rightLegPivot.rotation.x = swing;
   skinEditorPreviewRenderer.render(skinEditorPreviewScene, skinEditorPreviewCamera);
+}
+
+function renderSkinPreview2d() {
+  if (!skinPreview2dEl) return;
+  const ctx = skinPreview2dEl.getContext("2d", { willReadFrequently: true });
+  ctx.imageSmoothingEnabled = false;
+  ctx.clearRect(0, 0, skinPreview2dEl.width, skinPreview2dEl.height);
+  ctx.drawImage(skinSourceCanvas, 0, 0, skinSourceSize, skinSourceSize, 0, 0, skinPreview2dEl.width, skinPreview2dEl.height);
 }
 
 function updateMenuSkin3d(dt) {
@@ -2653,8 +3012,19 @@ function initSkinEditorUi() {
 
   toolBrushEl.addEventListener("click", () => { skinTool = "brush"; });
   toolEraserEl.addEventListener("click", () => { skinTool = "eraser"; });
+  toolPickerEl.addEventListener("click", () => { skinTool = "picker"; });
+  toolHandEl.addEventListener("click", () => { skinTool = "hand"; });
+  editMode2dEl.addEventListener("click", () => setSkinEditMode("2d"));
+  editMode3dEl.addEventListener("click", () => setSkinEditMode("3d"));
   toolSizeEl.addEventListener("change", () => {
     skinBrushSize = Math.max(1, Math.min(16, Number(toolSizeEl.value) || 1));
+  });
+
+  window.addEventListener("keydown", (evt) => {
+    if (evt.code === "Space") skinSpaceHeld = true;
+  });
+  window.addEventListener("keyup", (evt) => {
+    if (evt.code === "Space") skinSpaceHeld = false;
   });
 
   toolUndoEl.addEventListener("click", () => {
@@ -2676,6 +3046,10 @@ function initSkinEditorUi() {
   const startDraw = (evt) => {
     evt.preventDefault();
     const point = evt.touches?.[0] ?? evt;
+    if (skinTool === "hand" || skinSpaceHeld) {
+      skinOrbiting = true;
+      return;
+    }
     if (!skinSnapshotCaptured) {
       pushUndoSnapshot();
       skinRedoStack = [];
@@ -2683,13 +3057,27 @@ function initSkinEditorUi() {
     }
     skinDrawing = true;
     const p = getEditorPixelFromEvent(point);
+    if (skinTool === "picker") {
+      const data = skinSourceCtx.getImageData(p.x, p.y, 1, 1).data;
+      skinColorEl.value = `#${[data[0], data[1], data[2]].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+      skinSnapshotCaptured = false;
+      return;
+    }
     drawOnSkinAt(p.x, p.y);
     syncSkinToCanvasView();
     applyCurrentSkinToPreviews();
   };
 
   const moveDraw = (evt) => {
-    if (!skinDrawing) return;
+    if (skinOrbiting) {
+      evt.preventDefault();
+      const movementX = evt.movementX ?? 0;
+      const movementY = evt.movementY ?? 0;
+      skinEditorOrbitYaw -= movementX * 0.008;
+      skinEditorOrbitPitch = Math.max(-0.7, Math.min(0.7, skinEditorOrbitPitch - movementY * 0.006));
+      return;
+    }
+    if (!skinDrawing || skinTool === "picker") return;
     evt.preventDefault();
     const point = evt.touches?.[0] ?? evt;
     const p = getEditorPixelFromEvent(point);
@@ -2700,6 +3088,7 @@ function initSkinEditorUi() {
 
   const endDraw = () => {
     skinDrawing = false;
+    skinOrbiting = false;
     skinSnapshotCaptured = false;
   };
 
@@ -2768,19 +3157,22 @@ function initSkinEditorUi() {
     skinEditorPreviewAvatar.headOverlayMesh.visible = partHeadEl.checked;
     skinEditorPreviewAvatar.bodyMesh.visible = partBodyEl.checked;
     skinEditorPreviewAvatar.bodyOverlayMesh.visible = partBodyEl.checked;
-    skinEditorPreviewAvatar.leftArmMesh.visible = partArmsEl.checked;
-    skinEditorPreviewAvatar.rightArmMesh.visible = partArmsEl.checked;
-    skinEditorPreviewAvatar.leftArmOverlayMesh.visible = partArmsEl.checked;
-    skinEditorPreviewAvatar.rightArmOverlayMesh.visible = partArmsEl.checked;
-    skinEditorPreviewAvatar.leftLegMesh.visible = partLegsEl.checked;
-    skinEditorPreviewAvatar.rightLegMesh.visible = partLegsEl.checked;
-    skinEditorPreviewAvatar.leftLegOverlayMesh.visible = partLegsEl.checked;
-    skinEditorPreviewAvatar.rightLegOverlayMesh.visible = partLegsEl.checked;
+    skinEditorPreviewAvatar.rightArmMesh.visible = partRightArmEl.checked;
+    skinEditorPreviewAvatar.rightArmOverlayMesh.visible = partRightArmEl.checked;
+    skinEditorPreviewAvatar.leftArmMesh.visible = partLeftArmEl.checked;
+    skinEditorPreviewAvatar.leftArmOverlayMesh.visible = partLeftArmEl.checked;
+    skinEditorPreviewAvatar.rightLegMesh.visible = partRightLegEl.checked;
+    skinEditorPreviewAvatar.rightLegOverlayMesh.visible = partRightLegEl.checked;
+    skinEditorPreviewAvatar.leftLegMesh.visible = partLeftLegEl.checked;
+    skinEditorPreviewAvatar.leftLegOverlayMesh.visible = partLeftLegEl.checked;
   };
   partHeadEl.addEventListener("change", applyPartVisibility);
   partBodyEl.addEventListener("change", applyPartVisibility);
-  partArmsEl.addEventListener("change", applyPartVisibility);
-  partLegsEl.addEventListener("change", applyPartVisibility);
+  partRightArmEl.addEventListener("change", applyPartVisibility);
+  partLeftArmEl.addEventListener("change", applyPartVisibility);
+  partRightLegEl.addEventListener("change", applyPartVisibility);
+  partLeftLegEl.addEventListener("change", applyPartVisibility);
+  setSkinEditMode("2d");
   applyPartVisibility();
 }
 
@@ -2823,6 +3215,7 @@ function animateMenu(now) {
     updateMenuSkin3d(dt);
     updateSkinEditorPreview(dt);
   }
+  updatePauseSkin3d(dt);
   requestAnimationFrame(animateMenu);
 }
 
@@ -2835,6 +3228,7 @@ Promise.resolve()
   .then(() => loadSkinFromStorage())
   .then(() => {
     initMenuSkin3d();
+    initPauseSkin3d();
     initMenuPanorama();
     initSkinEditorPreview();
     initSkinEditorUi();

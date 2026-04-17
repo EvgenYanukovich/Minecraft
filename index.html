@@ -68,11 +68,18 @@
       <div class="skin-editor-layout">
         <div class="skin-editor-left">
           <canvas id="skin-editor-canvas" width="64" height="64"></canvas>
+          <div id="skin-editor-3d" class="skin-editor-3d hidden"></div>
           <div class="skin-editor-tools-row">
             <button id="tool-brush" class="mc-mini-btn">Кисть</button>
             <button id="tool-eraser" class="mc-mini-btn">Ластик</button>
+            <button id="tool-picker" class="mc-mini-btn">Пипетка</button>
+            <button id="tool-hand" class="mc-mini-btn">Рука</button>
             <button id="tool-undo" class="mc-mini-btn">←</button>
             <button id="tool-redo" class="mc-mini-btn">→</button>
+          </div>
+          <div class="skin-editor-tools-row">
+            <button id="edit-mode-2d" class="mc-mini-btn">Режим 2D</button>
+            <button id="edit-mode-3d" class="mc-mini-btn">Режим 3D</button>
           </div>
           <div class="skin-editor-tools-row">
             <label class="mc-label" for="tool-size">Размер</label>
@@ -92,12 +99,14 @@
           </div>
         </div>
         <div class="skin-editor-right">
-          <div id="skin-preview-3d" class="skin-preview-3d"></div>
+          <canvas id="skin-preview-2d" class="skin-preview-2d" width="160" height="160"></canvas>
           <div class="skin-editor-parts">
             <label><input id="part-head" type="checkbox" checked /> Голова</label>
             <label><input id="part-body" type="checkbox" checked /> Тело</label>
-            <label><input id="part-arms" type="checkbox" checked /> Руки</label>
-            <label><input id="part-legs" type="checkbox" checked /> Ноги</label>
+            <label><input id="part-right-arm" type="checkbox" checked /> Правая рука</label>
+            <label><input id="part-left-arm" type="checkbox" checked /> Левая рука</label>
+            <label><input id="part-right-leg" type="checkbox" checked /> Правая нога</label>
+            <label><input id="part-left-leg" type="checkbox" checked /> Левая нога</label>
           </div>
           <div class="skin-editor-tools-row">
             <button id="skin-import" class="mc-mini-btn">Импорт PNG</button>
@@ -109,6 +118,29 @@
             <button id="skin-close" class="mc-btn mc-btn-secondary">Закрыть</button>
           </div>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="pause-menu" class="pause-menu hidden" aria-hidden="true">
+    <div class="pause-panel">
+      <div class="pause-center">
+        <button id="pause-continue" class="mc-btn">Продолжить игру</button>
+        <button id="pause-settings" class="mc-btn">Настройки</button>
+        <button id="pause-main-menu" class="mc-btn mc-btn-secondary">Главное меню</button>
+      </div>
+      <div class="pause-left">
+        <div class="pause-side-title">Профиль</div>
+        <div class="pause-skin-viewer">
+          <div id="pause-skin-3d" class="menu-skin-3d"></div>
+        </div>
+        <button id="pause-customize-skin" class="mc-mini-btn">Кастомизация</button>
+        <label class="mc-label" for="pause-nickname-input">Никнейм</label>
+        <input id="pause-nickname-input" class="mc-input" type="text" maxlength="16" placeholder="Например: Steve" />
+      </div>
+      <div class="pause-right">
+        <div class="pause-side-title">Участники комнаты</div>
+        <div id="pause-participants" class="mc-room-members"></div>
       </div>
     </div>
   </div>

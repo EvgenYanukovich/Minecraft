@@ -27,6 +27,7 @@ function leaveRoom(playerId, notify = true) {
 
   const rc = String(state.roomCode).toUpperCase();
   const room = rooms.get(rc);
+  const leftNickname = String(state.nickname || "Player").slice(0, 16);
   state.roomCode = null;
   if (!room) return;
 
@@ -36,8 +37,11 @@ function leaveRoom(playerId, notify = true) {
     room.hostId = room.members.values().next().value;
   }
 
+  const reason = state.leaveReason || "left";
+  state.leaveReason = null;
+
   if (notify) {
-    const payload = JSON.stringify({ type: "peer_left", clientId: playerId });
+    const payload = JSON.stringify({ type: "peer_left", clientId: playerId, nickname: leftNickname, reason });
     for (const memberId of room.members) {
       const member = players.get(memberId);
       if (member && member.ws.readyState === 1) {
@@ -253,6 +257,12 @@ wss.on("connection", (ws) => {
         clientId: id,
         nickname: String(state.nickname || "Player").slice(0, 16),
       });
+      sendRoomToAll(room, {
+        type: "system_event",
+        event: "player_joined",
+        clientId: id,
+        nickname: String(state.nickname || "Player").slice(0, 16),
+      });
       sendRoomMembers(room);
       return;
     }
@@ -397,6 +407,29 @@ wss.on("connection", (ws) => {
         type: "room_start",
         roomCode: rc,
       });
+    }
+
+    if (msg.type === "kick_player") {
+      const rc = String(msg.roomCode || state.roomCode || "").trim().toUpperCase();
+      const room = rooms.get(rc);
+      if (!room || !room.members.has(id)) return;
+      if (room.hostId !== id) return;
+      const targetId = String(msg.targetId || "");
+      if (!targetId || targetId === id || !room.members.has(targetId)) return;
+
+      const targetState = players.get(targetId);
+      const targetNickname = String(targetState?.nickname || "Player").slice(0, 16);
+
+      sendRoomToAll(room, {
+        type: "kicked",
+        targetId,
+        nickname: targetNickname,
+      });
+
+      if (targetState?.ws?.readyState === 1) {
+        targetState.leaveReason = "kick";
+        try { targetState.ws.close(); } catch {}
+      }
     }
   });
 
