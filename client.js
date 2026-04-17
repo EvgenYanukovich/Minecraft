@@ -1252,8 +1252,8 @@ document.addEventListener("keydown", (e) => {
     if (isTyping && e.code !== "Escape") {
       if (active === chatInputEl && e.code === "Enter") {
         e.preventDefault();
-        sendChatMessage();
-        closeChat();
+        const sent = sendChatMessage();
+        if (sent) closeChat();
         if (active && typeof active.blur === "function") active.blur();
       }
       return;
@@ -1420,16 +1420,23 @@ function appendChatMessage(author, text) {
 }
 
 function sendChatMessage() {
-  if (!isConnectedToRoom()) return;
   const text = String(chatInputEl.value || "").trim();
-  if (!text) return;
-  ws.send(JSON.stringify({
-    type: "chat_message",
-    roomCode,
-    text: text.slice(0, 240),
-  }));
+  if (!text) return false;
+  const payloadText = text.slice(0, 240);
+
+  if (isConnectedToRoom()) {
+    ws.send(JSON.stringify({
+      type: "chat_message",
+      roomCode,
+      text: payloadText,
+    }));
+  } else {
+    appendChatMessage(localNickname || "Player", payloadText);
+  }
+
   chatInputEl.value = "";
   scheduleChatAutoHide();
+  return true;
 }
 
 function handlePeerMessage(peerId, msg) {
@@ -1756,8 +1763,8 @@ leaveLobbyBtnEl.addEventListener("click", () => {
 });
 
 chatSendEl.addEventListener("click", () => {
-  sendChatMessage();
-  closeChat();
+  const sent = sendChatMessage();
+  if (sent) closeChat();
   tryReturnControlToGame();
 });
 
