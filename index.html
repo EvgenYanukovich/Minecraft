@@ -80,6 +80,8 @@
           <div class="skin-editor-tools-row">
             <button id="edit-mode-2d" class="mc-mini-btn">Режим 2D</button>
             <button id="edit-mode-3d" class="mc-mini-btn">Режим 3D</button>
+            <button id="paint-layer-base" class="mc-mini-btn">Нижний слой</button>
+            <button id="paint-layer-overlay" class="mc-mini-btn">Верхний слой</button>
           </div>
           <div class="skin-editor-tools-row">
             <label class="mc-label" for="tool-size">Размер</label>
@@ -99,6 +101,7 @@
           </div>
         </div>
         <div class="skin-editor-right">
+          <div id="skin-preview-3d" class="skin-preview-3d"></div>
           <canvas id="skin-preview-2d" class="skin-preview-2d" width="160" height="160"></canvas>
           <div class="skin-editor-parts">
             <label><input id="part-head" type="checkbox" checked /> Голова</label>
