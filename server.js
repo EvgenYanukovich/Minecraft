@@ -32,6 +32,10 @@ function leaveRoom(playerId, notify = true) {
 
   room.members.delete(playerId);
 
+  if (room.hostId === playerId && room.members.size > 0) {
+    room.hostId = room.members.values().next().value;
+  }
+
   if (notify) {
     const payload = JSON.stringify({ type: "peer_left", clientId: playerId });
     for (const memberId of room.members) {
@@ -40,6 +44,10 @@ function leaveRoom(playerId, notify = true) {
         member.ws.send(payload);
       }
     }
+  }
+
+  if (room.members.size > 0) {
+    sendRoomMembers(room);
   }
 
   if (room.members.size === 0) {
@@ -93,6 +101,27 @@ function sendRoomToAll(room, message) {
       member.ws.send(payload);
     }
   }
+}
+
+function buildRoomMembers(room) {
+  const result = [];
+  for (const memberId of room.members) {
+    const member = players.get(memberId);
+    if (!member) continue;
+    result.push({
+      id: memberId,
+      nickname: String(member.nickname || "Player").slice(0, 16),
+    });
+  }
+  return result;
+}
+
+function sendRoomMembers(room) {
+  sendRoomToAll(room, {
+    type: "room_members",
+    hostId: room.hostId,
+    members: buildRoomMembers(room),
+  });
 }
 
 const server = http.createServer((req, res) => {
@@ -215,13 +244,16 @@ wss.on("connection", (ws) => {
 
       ws.send(JSON.stringify({ type: "world_sync", blocks }));
       state.roomCode = rc;
+      state.nickname = String(msg.nickname || state.nickname || "Player").slice(0, 16);
       room.members.add(id);
-      ws.send(JSON.stringify({ type: "room_joined", roomCode: rc }));
+      ws.send(JSON.stringify({ type: "room_joined", roomCode: rc, clientId: id, hostId: room.hostId }));
 
       sendRoomToOthers(room, id, {
         type: "peer_joined",
         clientId: id,
+        nickname: String(state.nickname || "Player").slice(0, 16),
       });
+      sendRoomMembers(room);
       return;
     }
 
@@ -289,6 +321,18 @@ wss.on("connection", (ws) => {
         clientId: id,
         nickname: String(state.nickname || "Player").slice(0, 16),
         text,
+      });
+    }
+
+    if (msg.type === "room_start") {
+      const rc = String(msg.roomCode || state.roomCode || "").trim().toUpperCase();
+      const room = rooms.get(rc);
+      if (!room || !room.members.has(id)) return;
+      if (room.hostId !== id) return;
+
+      sendRoomToAll(room, {
+        type: "room_start",
+        roomCode: rc,
       });
     }
   });

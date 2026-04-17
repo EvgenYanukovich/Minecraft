@@ -8,26 +8,57 @@
 </head>
 <body>
   <div id="start-menu" class="start-menu">
-    <div class="menu-card">
-      <h1>BrowserCraft Online</h1>
-      <p class="menu-sub">Host создаёт комнату, Connect подключается по коду комнаты.</p>
-      <label class="menu-label" for="nickname-input">Никнейм</label>
-      <input id="nickname-input" class="menu-input" type="text" placeholder="Например: Steve" maxlength="16" />
-      <label class="menu-label" for="connect-address">Код комнаты (для Connect)</label>
-      <input id="connect-address" class="menu-input" type="text" placeholder="Например: A1B2C3" />
-      <div class="menu-actions">
-        <button id="btn-host" class="menu-btn">Host</button>
-        <button id="btn-connect" class="menu-btn menu-btn-primary">Connect</button>
-      </div>
-      <div id="menu-status" class="menu-status"></div>
+    <div class="menu-pe-wrap">
+      <div class="menu-pe-logo">BrowserCraft</div>
 
-      <div id="host-message" class="host-message hidden">
-        <div id="host-message-text" class="host-message-text"></div>
-        <div class="host-message-actions">
-          <button id="btn-copy-host" class="menu-btn">Скопировать</button>
-          <button id="btn-close-host" class="menu-btn menu-btn-primary">Закрыть и играть</button>
+      <div id="menu-main" class="menu-screen">
+        <button id="btn-singleplayer" class="mc-btn">Одиночная игра</button>
+        <button id="btn-multiplayer" class="mc-btn">Сетевая игра</button>
+        <button id="btn-settings" class="mc-btn">Настройки</button>
+      </div>
+
+      <div id="menu-multiplayer" class="menu-screen hidden">
+        <button id="btn-be-host" class="mc-btn">Стать хостом</button>
+        <button id="btn-be-guest" class="mc-btn">Стать участником</button>
+        <button id="btn-back-main" class="mc-btn mc-btn-secondary">Назад</button>
+      </div>
+
+      <div id="menu-join" class="menu-screen hidden">
+        <label class="mc-label" for="room-code-input">Номер комнаты</label>
+        <input id="room-code-input" class="mc-input" type="text" placeholder="Например: A1B2C3" maxlength="12" />
+        <button id="btn-join-room" class="mc-btn">Подключиться</button>
+        <button id="btn-back-multiplayer" class="mc-btn mc-btn-secondary">Назад</button>
+      </div>
+
+      <div id="menu-lobby" class="menu-screen hidden">
+        <div class="mc-room-row">
+          <span class="mc-room-label">Комната:</span>
+          <span id="room-code-value" class="mc-room-code">------</span>
+          <button id="btn-copy-room" class="mc-mini-btn">Копировать</button>
+        </div>
+        <div class="mc-room-members-title">Участники комнаты</div>
+        <div id="participants-list" class="mc-room-members"></div>
+        <button id="btn-start-room" class="mc-btn">Начать игру</button>
+        <button id="btn-leave-lobby" class="mc-btn mc-btn-secondary">Выйти</button>
+      </div>
+
+      <div id="menu-status" class="menu-status"></div>
+    </div>
+
+    <div class="skin-corner">
+      <div class="skin-viewer">
+        <div class="mc-skin">
+          <div class="mc-skin-head"></div>
+          <div class="mc-skin-body"></div>
+          <div class="mc-skin-arm mc-skin-arm-left"></div>
+          <div class="mc-skin-arm mc-skin-arm-right"></div>
+          <div class="mc-skin-leg mc-skin-leg-left"></div>
+          <div class="mc-skin-leg mc-skin-leg-right"></div>
         </div>
       </div>
+      <button id="btn-customize-skin" class="mc-mini-btn">Кастомизация</button>
+      <label class="mc-label" for="nickname-input">Никнейм</label>
+      <input id="nickname-input" class="mc-input" type="text" placeholder="Например: Steve" maxlength="16" />
     </div>
   </div>
 
@@ -47,6 +78,7 @@
   <div id="inventory" class="inventory hidden" aria-hidden="true">
     <div class="inventory-panel">
       <div class="inventory-title">Инвентарь</div>
+      <div id="inventory-held" class="inventory-held">В руке: пусто</div>
       <div id="inventory-grid" class="inventory-grid"></div>
       <div class="inventory-hotbar-title">Хотбар</div>
       <div id="inventory-hotbar" class="inventory-hotbar"></div>

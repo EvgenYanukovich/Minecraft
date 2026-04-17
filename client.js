@@ -3,20 +3,33 @@ import * as THREE from "https://unpkg.com/three@0.183.2/build/three.module.js";
 const debugEl = document.getElementById("debug");
 const hotbarEl = document.getElementById("hotbar");
 const startMenuEl = document.getElementById("start-menu");
-const connectAddressEl = document.getElementById("connect-address");
+const menuMainEl = document.getElementById("menu-main");
+const menuMultiplayerEl = document.getElementById("menu-multiplayer");
+const menuJoinEl = document.getElementById("menu-join");
+const menuLobbyEl = document.getElementById("menu-lobby");
 const nicknameInputEl = document.getElementById("nickname-input");
-const hostBtnEl = document.getElementById("btn-host");
-const connectBtnEl = document.getElementById("btn-connect");
+const roomCodeInputEl = document.getElementById("room-code-input");
+const roomCodeValueEl = document.getElementById("room-code-value");
+const participantsListEl = document.getElementById("participants-list");
+const singleplayerBtnEl = document.getElementById("btn-singleplayer");
+const multiplayerBtnEl = document.getElementById("btn-multiplayer");
+const settingsBtnEl = document.getElementById("btn-settings");
+const becomeHostBtnEl = document.getElementById("btn-be-host");
+const becomeGuestBtnEl = document.getElementById("btn-be-guest");
+const backMainBtnEl = document.getElementById("btn-back-main");
+const joinRoomBtnEl = document.getElementById("btn-join-room");
+const backMultiplayerBtnEl = document.getElementById("btn-back-multiplayer");
+const copyRoomBtnEl = document.getElementById("btn-copy-room");
+const startRoomBtnEl = document.getElementById("btn-start-room");
+const leaveLobbyBtnEl = document.getElementById("btn-leave-lobby");
+const customizeSkinBtnEl = document.getElementById("btn-customize-skin");
 const menuStatusEl = document.getElementById("menu-status");
-const hostMessageEl = document.getElementById("host-message");
-const hostMessageTextEl = document.getElementById("host-message-text");
-const copyHostBtnEl = document.getElementById("btn-copy-host");
-const closeHostBtnEl = document.getElementById("btn-close-host");
 const chatLogEl = document.getElementById("chat-log");
 const chatEl = document.getElementById("chat");
 const chatInputEl = document.getElementById("chat-input");
 const chatSendEl = document.getElementById("chat-send");
 const inventoryEl = document.getElementById("inventory");
+const inventoryHeldEl = document.getElementById("inventory-held");
 const inventoryGridEl = document.getElementById("inventory-grid");
 const inventoryHotbarEl = document.getElementById("inventory-hotbar");
 
@@ -69,15 +82,25 @@ let localNickname = "Player";
 let miningActive = false;
 let miningProgress = 0;
 let miningKey = null;
+let miningGraceTimer = 0;
 let chatOpen = false;
 let inventoryOpen = false;
 let heldInventoryItem = null;
 let gameStarted = false;
-let pendingHostStart = false;
+let currentMenuScreen = "main";
+let networkMode = "none";
+let isHostRole = false;
+let localServerPeerId = null;
+let lobbyHostId = null;
+let roomParticipants = [];
 
-const inventorySlots = new Array(INVENTORY_TOTAL_SIZE).fill(null);
+const inventorySlots = new Array(INVENTORY_TOTAL_SIZE).fill(BLOCK_AIR);
 for (let i = 0; i < HOTBAR_SIZE; i += 1) {
-  inventorySlots[INVENTORY_MAIN_SIZE + i] = HOTBAR[i] ?? null;
+  inventorySlots[INVENTORY_MAIN_SIZE + i] = HOTBAR[i] ?? BLOCK_AIR;
+}
+for (let i = 0; i < INVENTORY_MAIN_SIZE; i += 1) {
+  if (i % 5 === 0) inventorySlots[i] = BLOCKS.dirt.id;
+  else if (i % 7 === 0) inventorySlots[i] = BLOCKS.stone.id;
 }
 
 const mineCracksEl = document.createElement("div");
@@ -111,20 +134,100 @@ const crackTextures = new Array(10).fill(0).map((_, i) => makeCrackTexture(i));
 
 function syncHotbarFromInventory() {
   for (let i = 0; i < HOTBAR_SIZE; i += 1) {
-    const id = inventorySlots[INVENTORY_MAIN_SIZE + i];
-    HOTBAR[i] = id ?? BLOCKS.grass.id;
+    HOTBAR[i] = inventorySlots[INVENTORY_MAIN_SIZE + i] ?? BLOCK_AIR;
   }
+  if (selectedSlot < 0 || selectedSlot >= HOTBAR_SIZE) selectedSlot = 0;
+  if (HOTBAR[selectedSlot] === BLOCK_AIR) {
+    const fallbackIndex = HOTBAR.findIndex((id) => id !== BLOCK_AIR);
+    selectedSlot = fallbackIndex >= 0 ? fallbackIndex : 0;
+  }
+}
+
+function putHeldItemBackToInventory() {
+  if (heldInventoryItem == null || heldInventoryItem === BLOCK_AIR) return;
+  const emptyIndex = inventorySlots.findIndex((id) => id === BLOCK_AIR);
+  if (emptyIndex >= 0) {
+    inventorySlots[emptyIndex] = heldInventoryItem;
+  }
+  heldInventoryItem = null;
 }
 
 function resetMiningState() {
   miningActive = false;
   miningProgress = 0;
   miningKey = null;
+  miningGraceTimer = 0;
   mineCracksEl.style.opacity = "0";
 }
 
 function isUiBlockingGame() {
   return chatOpen || inventoryOpen;
+}
+
+function setMenuScreen(screen) {
+  currentMenuScreen = screen;
+  menuMainEl.classList.toggle("hidden", screen !== "main");
+  menuMultiplayerEl.classList.toggle("hidden", screen !== "multiplayer");
+  menuJoinEl.classList.toggle("hidden", screen !== "join");
+  menuLobbyEl.classList.toggle("hidden", screen !== "lobby");
+}
+
+function getParticipantDisplayName(item) {
+  const nick = String(item.nickname || "Player").trim();
+  return nick ? nick : "Player";
+}
+
+function renderParticipants() {
+  participantsListEl.innerHTML = "";
+  if (!roomParticipants.length) {
+    const empty = document.createElement("div");
+    empty.className = "mc-room-member";
+    empty.textContent = "Пока нет участников";
+    participantsListEl.append(empty);
+    return;
+  }
+
+  roomParticipants.forEach((participant) => {
+    const row = document.createElement("div");
+    row.className = "mc-room-member";
+    const name = document.createElement("span");
+    name.textContent = getParticipantDisplayName(participant);
+    row.append(name);
+
+    if (participant.id === lobbyHostId) {
+      const badge = document.createElement("span");
+      badge.className = "mc-badge-host";
+      badge.textContent = "Хост";
+      row.append(badge);
+    }
+
+    participantsListEl.append(row);
+  });
+}
+
+function ensureParticipantById(id, nickname = "Player") {
+  if (!id) return;
+  const idx = roomParticipants.findIndex((p) => p.id === id);
+  if (idx >= 0) {
+    roomParticipants[idx].nickname = String(nickname || roomParticipants[idx].nickname || "Player").slice(0, 16);
+  } else {
+    roomParticipants.push({ id, nickname: String(nickname || "Player").slice(0, 16) });
+  }
+}
+
+function removeParticipantById(id) {
+  roomParticipants = roomParticipants.filter((p) => p.id !== id);
+}
+
+function resetLobbyState() {
+  roomParticipants = [];
+  lobbyHostId = null;
+  roomCodeValueEl.textContent = "------";
+  renderParticipants();
+}
+
+function updateLobbyStartButtonState() {
+  startRoomBtnEl.disabled = !(isHostRole && localServerPeerId && localServerPeerId === lobbyHostId);
 }
 
 function openChat() {
@@ -153,9 +256,9 @@ function renderInventorySlot(slotIndex, selectedHotbarIndex) {
   const hotbarIndex = isHotbar ? slotIndex - INVENTORY_MAIN_SIZE : -1;
   const isActive = isHotbar && selectedHotbarIndex === hotbarIndex;
   const id = inventorySlots[slotIndex];
-  slot.className = `inv-slot ${id == null ? "empty" : ""} ${isActive ? "active" : ""}`;
+  slot.className = `inv-slot ${id === BLOCK_AIR ? "empty" : ""} ${isActive ? "active" : ""}`;
 
-  if (id != null) {
+  if (id !== BLOCK_AIR) {
     const b = BLOCK_BY_ID.get(id);
     const item = document.createElement("div");
     item.className = "inv-item";
@@ -171,12 +274,13 @@ function renderInventorySlot(slotIndex, selectedHotbarIndex) {
 
   slot.addEventListener("click", () => {
     const current = inventorySlots[slotIndex];
-    if (heldInventoryItem == null && current != null) {
+    if ((heldInventoryItem == null || heldInventoryItem === BLOCK_AIR) && current !== BLOCK_AIR) {
       heldInventoryItem = current;
-      inventorySlots[slotIndex] = null;
-    } else if (heldInventoryItem != null) {
+      inventorySlots[slotIndex] = BLOCK_AIR;
+    } else if (heldInventoryItem != null && heldInventoryItem !== BLOCK_AIR) {
       inventorySlots[slotIndex] = heldInventoryItem;
-      heldInventoryItem = current ?? null;
+      heldInventoryItem = current;
+      if (heldInventoryItem === BLOCK_AIR) heldInventoryItem = null;
     }
     syncHotbarFromInventory();
     renderHotbar();
@@ -195,6 +299,8 @@ function renderInventory() {
   for (let i = INVENTORY_MAIN_SIZE; i < INVENTORY_TOTAL_SIZE; i += 1) {
     inventoryHotbarEl.append(renderInventorySlot(i, selectedSlot));
   }
+  const heldName = heldInventoryItem == null ? "пусто" : (BLOCK_BY_ID.get(heldInventoryItem)?.name || "Block");
+  inventoryHeldEl.textContent = `В руке: ${heldName}`;
 }
 
 function openInventory() {
@@ -213,7 +319,9 @@ function openInventory() {
 function closeInventory() {
   if (!inventoryOpen) return;
   inventoryOpen = false;
-  heldInventoryItem = null;
+  putHeldItemBackToInventory();
+  syncHotbarFromInventory();
+  renderHotbar();
   inventoryEl.classList.add("hidden");
   inventoryEl.setAttribute("aria-hidden", "true");
 }
@@ -929,6 +1037,7 @@ function placeBlock() {
   const target = updateTargetBlock();
   if (!target || !target.prev) return;
   const id = HOTBAR[selectedSlot];
+  if (!id || id === BLOCK_AIR) return;
   const { x, y, z } = target.prev;
   if (wouldBlockPlayerAt(x, y, z)) return;
   if (getBlock(x, y, z) !== BLOCK_AIR) return;
@@ -945,11 +1054,25 @@ function updateMining(dt) {
 
   const target = updateTargetBlock();
   if (!target) {
-    miningProgress = 0;
-    miningKey = null;
+    miningGraceTimer += dt;
+    if (miningGraceTimer >= 0.15) {
+      miningProgress = 0;
+      miningKey = null;
+      mineCracksEl.style.opacity = "0";
+    }
+    return;
+  }
+  miningGraceTimer = 0;
+
+  const blockCenter = new THREE.Vector3(target.hit.x + 0.5, target.hit.y + 0.5, target.hit.z + 0.5);
+  const screenPos = blockCenter.project(camera);
+  const isVisible = screenPos.z >= -1 && screenPos.z <= 1;
+  if (!isVisible) {
     mineCracksEl.style.opacity = "0";
     return;
   }
+  mineCracksEl.style.left = `${((screenPos.x * 0.5 + 0.5) * window.innerWidth).toFixed(2)}px`;
+  mineCracksEl.style.top = `${((-screenPos.y * 0.5 + 0.5) * window.innerHeight).toFixed(2)}px`;
 
   const key = `${target.hit.x},${target.hit.y},${target.hit.z}`;
   if (miningKey !== key) {
@@ -976,17 +1099,19 @@ function updateMining(dt) {
 
 document.addEventListener("keydown", (e) => {
   const active = document.activeElement;
-  const isTyping = active === chatInputEl || active === nicknameInputEl || active === connectAddressEl;
+  const isTyping = active === chatInputEl || active === nicknameInputEl || active === roomCodeInputEl;
 
   if (e.code === "Escape") {
     if (chatOpen) {
       e.preventDefault();
       closeChat();
+      if (active && typeof active.blur === "function") active.blur();
       return;
     }
     if (inventoryOpen) {
       e.preventDefault();
       closeInventory();
+      if (active && typeof active.blur === "function") active.blur();
       return;
     }
   }
@@ -998,7 +1123,7 @@ document.addEventListener("keydown", (e) => {
     return;
   }
 
-  if (e.code === "KeyE" && gameStarted && !chatOpen && active !== nicknameInputEl && active !== connectAddressEl) {
+  if (e.code === "KeyE" && gameStarted && !chatOpen && active !== nicknameInputEl && active !== roomCodeInputEl) {
     e.preventDefault();
     if (inventoryOpen) closeInventory();
     else openInventory();
@@ -1021,7 +1146,7 @@ document.addEventListener("keydown", (e) => {
   keys.add(e.code);
   if (e.code.startsWith("Digit")) {
     const i = Number(e.code.slice(5)) - 1;
-    if (i >= 0 && i < HOTBAR.length) {
+    if (i >= 0 && i < HOTBAR_SIZE) {
       selectedSlot = i;
       renderHotbar();
     }
@@ -1084,6 +1209,14 @@ function renderHotbar() {
   HOTBAR.forEach((id, i) => {
     const slot = document.createElement("div");
     slot.className = `slot ${selectedSlot === i ? "active" : ""}`;
+    if (id === BLOCK_AIR) {
+      const t = document.createElement("div");
+      t.className = "slot-name";
+      t.textContent = `${i + 1}. Empty`;
+      slot.append(t);
+      hotbarEl.append(slot);
+      return;
+    }
     const c = document.createElement("div");
     c.className = "slot-color";
     const b = BLOCK_BY_ID.get(id);
@@ -1180,7 +1313,10 @@ function handlePeerMessage(peerId, msg) {
     rp.targetPos.copy(nextPos);
     rp.yaw = Number(msg.yaw) || 0;
     rp.pitch = Number(msg.pitch) || 0;
-    updateAvatarNickname(rp, String(msg.nickname || "Player"));
+    const nextNickname = String(msg.nickname || "Player");
+    if (rp.nickname !== nextNickname) {
+      updateAvatarNickname(rp, nextNickname);
+    }
 
   }
 
@@ -1240,8 +1376,26 @@ function connectToRoom(code, mode) {
         joined = true;
         ws = socket;
         roomCode = msg.roomCode;
+        roomCodeValueEl.textContent = msg.roomCode;
+        lobbyHostId = String(msg.hostId || lobbyHostId || "");
+        localServerPeerId = String(msg.clientId || localServerPeerId || "");
+        roomParticipants = [];
+        ensureParticipantById(localServerPeerId || localClientId, localNickname);
+        renderParticipants();
+        updateLobbyStartButtonState();
         clearAllRemotePlayers();
         resolve(msg.roomCode);
+      }
+
+      if (msg.type === "room_members") {
+        lobbyHostId = String(msg.hostId || lobbyHostId || "");
+        const list = Array.isArray(msg.members) ? msg.members : [];
+        roomParticipants = list.map((item) => ({
+          id: String(item.id || ""),
+          nickname: String(item.nickname || "Player").slice(0, 16),
+        })).filter((item) => item.id);
+        renderParticipants();
+        updateLobbyStartButtonState();
       }
 
       if (msg.type === "room_error") {
@@ -1253,6 +1407,8 @@ function connectToRoom(code, mode) {
       }
 
       if (msg.type === "peer_joined") {
+        ensureParticipantById(String(msg.clientId || ""), String(msg.nickname || "Player"));
+        renderParticipants();
         menuStatusEl.textContent = "Игрок подключился к комнате.";
       }
 
@@ -1261,7 +1417,13 @@ function connectToRoom(code, mode) {
       }
 
       if (msg.type === "peer_left") {
+        removeParticipantById(String(msg.clientId || ""));
+        renderParticipants();
         handlePeerMessage(msg.clientId, { type: "peer_left", id: msg.clientId });
+      }
+
+      if (msg.type === "room_start") {
+        beginGame();
       }
 
       if (msg.type === "world_sync") {
@@ -1280,27 +1442,53 @@ function beginGame() {
   gameStarted = true;
   startMenuEl.classList.add("hidden");
   spawnAtSafePlace();
+  syncHotbarFromInventory();
   renderHotbar();
   last = performance.now();
   requestAnimationFrame(animate);
 }
+singleplayerBtnEl.addEventListener("click", () => {
+  networkMode = "single";
+  isHostRole = false;
+  localNickname = String(nicknameInputEl.value || "").trim() || `Player-${localClientId.slice(-4)}`;
+  beginGame();
+});
 
-function disableMenuButtons(disabled) {
-  hostBtnEl.disabled = disabled;
-  connectBtnEl.disabled = disabled;
-}
+multiplayerBtnEl.addEventListener("click", () => {
+  setMenuScreen("multiplayer");
+  menuStatusEl.textContent = "Выбери роль в сетевой игре.";
+});
 
-function hideHostMessage() {
-  hostMessageEl.classList.add("hidden");
-}
+settingsBtnEl.addEventListener("click", () => {
+  menuStatusEl.textContent = "Настройки будут добавлены позже.";
+});
 
-hostBtnEl.addEventListener("click", async () => {
+customizeSkinBtnEl.addEventListener("click", () => {
+  menuStatusEl.textContent = "Кастомизация скина будет добавлена позже.";
+});
+
+backMainBtnEl.addEventListener("click", () => {
+  setMenuScreen("main");
+  menuStatusEl.textContent = "";
+});
+
+becomeGuestBtnEl.addEventListener("click", () => {
+  setMenuScreen("join");
+  menuStatusEl.textContent = "Введи номер комнаты и подключись.";
+});
+
+backMultiplayerBtnEl.addEventListener("click", () => {
+  setMenuScreen("multiplayer");
+  menuStatusEl.textContent = "";
+});
+
+becomeHostBtnEl.addEventListener("click", async () => {
   if (gameStarted) return;
   localNickname = String(nicknameInputEl.value || "").trim() || `Player-${localClientId.slice(-4)}`;
-  disableMenuButtons(true);
-  hideHostMessage();
+  networkMode = "multi";
+  isHostRole = true;
   menuStatusEl.textContent = "Создание комнаты...";
-  pendingHostStart = true;
+  resetLobbyState();
 
   try {
     let room = null;
@@ -1315,51 +1503,72 @@ hostBtnEl.addEventListener("click", async () => {
         }
       }
     }
-    if (!room) {
-      throw new Error("room-create-failed");
-    }
-    hostMessageTextEl.textContent = `Комната создана. Код: ${room}`;
-    hostMessageEl.classList.remove("hidden");
-    menuStatusEl.textContent = "Передай код комнаты другим игрокам и нажми 'Закрыть и играть'.";
-    disableMenuButtons(false);
+    if (!room) throw new Error("room-create-failed");
+    roomCodeValueEl.textContent = room;
+    lobbyHostId = localServerPeerId;
+    setMenuScreen("lobby");
+    updateLobbyStartButtonState();
+    menuStatusEl.textContent = "Комната создана.";
   } catch {
-    pendingHostStart = false;
     menuStatusEl.textContent = "Не удалось создать комнату.";
-    disableMenuButtons(false);
+    setMenuScreen("multiplayer");
   }
 });
 
-connectBtnEl.addEventListener("click", async () => {
+joinRoomBtnEl.addEventListener("click", async () => {
   if (gameStarted) return;
   localNickname = String(nicknameInputEl.value || "").trim() || `Player-${localClientId.slice(-4)}`;
-  hideHostMessage();
-  const code = String(connectAddressEl.value || "").trim().toUpperCase();
+  const code = String(roomCodeInputEl.value || "").trim().toUpperCase();
   if (!code) {
-    menuStatusEl.textContent = "Вставь код комнаты";
+    menuStatusEl.textContent = "Введи номер комнаты.";
     return;
   }
-  disableMenuButtons(true);
+
+  networkMode = "multi";
+  isHostRole = false;
   menuStatusEl.textContent = "Подключение к комнате...";
+  resetLobbyState();
+
   try {
     await connectToRoom(code, "join");
-    hostMessageTextEl.textContent = `Подключено к комнате: ${code}`;
-    hostMessageEl.classList.remove("hidden");
-    menuStatusEl.textContent = "Подключено к комнате. Нажми 'Закрыть и играть'.";
+    roomCodeValueEl.textContent = code;
+    setMenuScreen("lobby");
+    updateLobbyStartButtonState();
+    menuStatusEl.textContent = "Подключено к комнате.";
   } catch {
     menuStatusEl.textContent = "Не удалось подключиться к комнате.";
   }
-  disableMenuButtons(false);
 });
 
-copyHostBtnEl.addEventListener("click", async () => {
-  const text = hostMessageTextEl.textContent || "";
-  if (!text) return;
+copyRoomBtnEl.addEventListener("click", async () => {
+  const text = String(roomCodeValueEl.textContent || "").trim();
+  if (!text || text === "------") return;
   try {
     await navigator.clipboard.writeText(text);
-    menuStatusEl.textContent = "Сообщение скопировано.";
+    menuStatusEl.textContent = "Номер комнаты скопирован.";
   } catch {
-    menuStatusEl.textContent = "Не удалось скопировать автоматически. Скопируй текст вручную.";
+    menuStatusEl.textContent = "Не удалось скопировать автоматически.";
   }
+});
+
+startRoomBtnEl.addEventListener("click", () => {
+  if (!isHostRole || !isConnectedToRoom()) return;
+  ws.send(JSON.stringify({ type: "room_start", roomCode }));
+  beginGame();
+});
+
+leaveLobbyBtnEl.addEventListener("click", () => {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    try { ws.close(); } catch {}
+  }
+  ws = null;
+  roomCode = null;
+  isHostRole = false;
+  networkMode = "none";
+  localServerPeerId = null;
+  resetLobbyState();
+  setMenuScreen("multiplayer");
+  menuStatusEl.textContent = "Ты вышел из комнаты.";
 });
 
 chatSendEl.addEventListener("click", () => {
@@ -1381,12 +1590,6 @@ chatInputEl.addEventListener("blur", () => {
   }
 });
 
-closeHostBtnEl.addEventListener("click", () => {
-  if (!pendingHostStart && !isConnectedToRoom()) return;
-  pendingHostStart = false;
-  hideHostMessage();
-  beginGame();
-});
 
 let netAccumulator = 0;
 function sendPlayerState(dt) {
