@@ -338,6 +338,24 @@ wss.on("connection", (ws) => {
       sendRoomMembers(room);
     }
 
+    if (msg.type === "skin_update") {
+      const rc = String(msg.roomCode || state.roomCode || "").trim().toUpperCase();
+      const room = rooms.get(rc);
+      if (!room || !room.members.has(id)) return;
+      const skin = String(msg.skin || "");
+      if (!skin || skin.length > 350000) return;
+      if (!skin.startsWith("data:image/png;base64,")) return;
+
+      const raw = skin.slice("data:image/png;base64,".length);
+      if (!raw || /[^A-Za-z0-9+/=]/.test(raw)) return;
+
+      sendRoomToOthers(room, id, {
+        type: "skin_update",
+        clientId: id,
+        skin,
+      });
+    }
+
     if (msg.type === "ping_request") {
       const rc = String(msg.roomCode || state.roomCode || "").trim().toUpperCase();
       const room = rooms.get(rc);

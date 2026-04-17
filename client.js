@@ -32,6 +32,25 @@ const menuSkin3dEl = document.getElementById("menu-skin-3d");
 const pingOverlayEl = document.getElementById("ping-overlay");
 const pingListEl = document.getElementById("ping-list");
 const menuPanoramaEl = document.getElementById("menu-panorama");
+const skinEditorEl = document.getElementById("skin-editor");
+const skinEditorCanvasEl = document.getElementById("skin-editor-canvas");
+const skinPaletteEl = document.getElementById("skin-palette");
+const skinColorEl = document.getElementById("skin-color");
+const toolBrushEl = document.getElementById("tool-brush");
+const toolEraserEl = document.getElementById("tool-eraser");
+const toolUndoEl = document.getElementById("tool-undo");
+const toolRedoEl = document.getElementById("tool-redo");
+const toolSizeEl = document.getElementById("tool-size");
+const partHeadEl = document.getElementById("part-head");
+const partBodyEl = document.getElementById("part-body");
+const partArmsEl = document.getElementById("part-arms");
+const partLegsEl = document.getElementById("part-legs");
+const skinImportBtnEl = document.getElementById("skin-import");
+const skinExportBtnEl = document.getElementById("skin-export");
+const skinImportFileEl = document.getElementById("skin-import-file");
+const skinSaveBtnEl = document.getElementById("skin-save");
+const skinCloseBtnEl = document.getElementById("skin-close");
+const skinPreview3dEl = document.getElementById("skin-preview-3d");
 const inventoryEl = document.getElementById("inventory");
 const inventoryHeldEl = document.getElementById("inventory-held");
 const inventoryGridEl = document.getElementById("inventory-grid");
@@ -105,6 +124,68 @@ let pingAccumulator = 0;
 let pingRequestCounter = 1;
 const pendingPings = new Map();
 const playerPings = new Map();
+const remoteSkins = new Map();
+
+const SKIN_STORAGE_KEY = "browsercraft_skin_v1";
+const SKIN_MAX_DATA_URL_LENGTH = 350000;
+let localSkinDataUrl = null;
+let skinEditorOpen = false;
+let skinTool = "brush";
+let skinBrushSize = 1;
+let skinDrawing = false;
+let skinUndoStack = [];
+let skinRedoStack = [];
+let skinSnapshotCaptured = false;
+
+const skinSourceCanvas = document.createElement("canvas");
+skinSourceCanvas.width = 64;
+skinSourceCanvas.height = 64;
+const skinSourceCtx = skinSourceCanvas.getContext("2d", { willReadFrequently: true });
+
+const defaultSkinCanvas = document.createElement("canvas");
+defaultSkinCanvas.width = 64;
+defaultSkinCanvas.height = 64;
+const defaultSkinCtx = defaultSkinCanvas.getContext("2d", { willReadFrequently: true });
+
+let skinEditorPreviewRenderer = null;
+let skinEditorPreviewScene = null;
+let skinEditorPreviewCamera = null;
+let skinEditorPreviewAvatar = null;
+
+const SKIN_PALETTE = [
+  "#000000", "#ffffff", "#c68642", "#8f5d2b", "#2e6fb7", "#1f4f8b",
+  "#3d5db1", "#2b4489", "#58a947", "#3f8f49", "#8b5f3a", "#7d542f",
+  "#d8c588", "#9a4c39", "#eef7ff", "#ff6b6b", "#ffd166", "#06d6a0",
+];
+
+const SKIN_PART_REGIONS = {
+  head: [
+    { x: 8, y: 0, w: 8, h: 8 }, { x: 16, y: 0, w: 8, h: 8 },
+    { x: 0, y: 8, w: 8, h: 8 }, { x: 8, y: 8, w: 8, h: 8 },
+    { x: 16, y: 8, w: 8, h: 8 }, { x: 24, y: 8, w: 8, h: 8 },
+  ],
+  body: [
+    { x: 20, y: 16, w: 8, h: 4 }, { x: 28, y: 16, w: 8, h: 4 },
+    { x: 16, y: 20, w: 4, h: 12 }, { x: 20, y: 20, w: 8, h: 12 },
+    { x: 28, y: 20, w: 4, h: 12 }, { x: 32, y: 20, w: 8, h: 12 },
+  ],
+  arms: [
+    { x: 44, y: 16, w: 4, h: 4 }, { x: 48, y: 16, w: 4, h: 4 },
+    { x: 40, y: 20, w: 4, h: 12 }, { x: 44, y: 20, w: 4, h: 12 },
+    { x: 48, y: 20, w: 4, h: 12 }, { x: 52, y: 20, w: 4, h: 12 },
+    { x: 36, y: 48, w: 4, h: 4 }, { x: 40, y: 48, w: 4, h: 4 },
+    { x: 32, y: 52, w: 4, h: 12 }, { x: 36, y: 52, w: 4, h: 12 },
+    { x: 40, y: 52, w: 4, h: 12 }, { x: 44, y: 52, w: 4, h: 12 },
+  ],
+  legs: [
+    { x: 4, y: 16, w: 4, h: 4 }, { x: 8, y: 16, w: 4, h: 4 },
+    { x: 0, y: 20, w: 4, h: 12 }, { x: 4, y: 20, w: 4, h: 12 },
+    { x: 8, y: 20, w: 4, h: 12 }, { x: 12, y: 20, w: 4, h: 12 },
+    { x: 20, y: 48, w: 4, h: 4 }, { x: 24, y: 48, w: 4, h: 4 },
+    { x: 16, y: 52, w: 4, h: 12 }, { x: 20, y: 52, w: 4, h: 12 },
+    { x: 24, y: 52, w: 4, h: 12 }, { x: 28, y: 52, w: 4, h: 12 },
+  ],
+};
 
 const inventorySlots = new Array(INVENTORY_TOTAL_SIZE).fill(BLOCK_AIR);
 for (let i = 0; i < HOTBAR_SIZE; i += 1) {
@@ -141,6 +222,188 @@ function markPanoramaOccupied(x, z, topY) {
   const key = panoramaHeightKey(x, z);
   const prev = panoramaHeightMap.get(key) ?? -Infinity;
   panoramaHeightMap.set(key, Math.max(prev, topY));
+}
+
+function paintDefaultSkin(ctx) {
+  ctx.clearRect(0, 0, 64, 64);
+
+  const skin = "#c68642";
+  const hair = "#7b4a23";
+  const shirt = "#2e6fb7";
+  const shirtDark = "#1f4f8b";
+  const pants = "#3d5db1";
+  const pantsDark = "#2b4489";
+
+  const fill = (x, y, w, h, color) => { ctx.fillStyle = color; ctx.fillRect(x, y, w, h); };
+
+  fill(8, 8, 8, 8, skin);
+  fill(0, 8, 8, 8, skin);
+  fill(16, 8, 8, 8, skin);
+  fill(24, 8, 8, 8, skin);
+  fill(8, 0, 8, 8, skin);
+  fill(16, 0, 8, 8, skin);
+  fill(8, 0, 8, 3, hair);
+  fill(8, 8, 8, 2, hair);
+
+  fill(20, 20, 8, 12, shirt);
+  fill(16, 20, 4, 12, shirtDark);
+  fill(28, 20, 4, 12, shirtDark);
+  fill(32, 20, 8, 12, shirt);
+  fill(20, 16, 8, 4, shirt);
+  fill(28, 16, 8, 4, shirtDark);
+
+  fill(44, 20, 4, 12, skin);
+  fill(40, 20, 4, 12, skin);
+  fill(48, 20, 4, 12, skin);
+  fill(52, 20, 4, 12, skin);
+  fill(44, 16, 4, 4, skin);
+  fill(48, 16, 4, 4, skin);
+
+  fill(36, 52, 4, 12, skin);
+  fill(32, 52, 4, 12, skin);
+  fill(40, 52, 4, 12, skin);
+  fill(44, 52, 4, 12, skin);
+  fill(36, 48, 4, 4, skin);
+  fill(40, 48, 4, 4, skin);
+
+  fill(4, 20, 4, 12, pants);
+  fill(0, 20, 4, 12, pantsDark);
+  fill(8, 20, 4, 12, pantsDark);
+  fill(12, 20, 4, 12, pants);
+  fill(4, 16, 4, 4, pants);
+  fill(8, 16, 4, 4, pantsDark);
+
+  fill(20, 52, 4, 12, pants);
+  fill(16, 52, 4, 12, pantsDark);
+  fill(24, 52, 4, 12, pantsDark);
+  fill(28, 52, 4, 12, pants);
+  fill(20, 48, 4, 4, pants);
+  fill(24, 48, 4, 4, pantsDark);
+}
+
+function cloneSkinSnapshot() {
+  return skinSourceCtx.getImageData(0, 0, 64, 64);
+}
+
+function restoreSkinSnapshot(imageData) {
+  if (!imageData) return;
+  skinSourceCtx.putImageData(imageData, 0, 0);
+}
+
+function syncSkinToCanvasView() {
+  if (!skinEditorCanvasEl) return;
+  const ctx = skinEditorCanvasEl.getContext("2d", { willReadFrequently: true });
+  ctx.imageSmoothingEnabled = false;
+  ctx.clearRect(0, 0, skinEditorCanvasEl.width, skinEditorCanvasEl.height);
+  ctx.drawImage(skinSourceCanvas, 0, 0);
+}
+
+function syncSkinToDataUrl() {
+  localSkinDataUrl = skinSourceCanvas.toDataURL("image/png");
+}
+
+function saveSkinToStorage() {
+  syncSkinToDataUrl();
+  try { localStorage.setItem(SKIN_STORAGE_KEY, localSkinDataUrl); } catch {}
+}
+
+function isValidSkinDataUrl(value) {
+  if (typeof value !== "string") return false;
+  if (!value.startsWith("data:image/png;base64,")) return false;
+  if (value.length > SKIN_MAX_DATA_URL_LENGTH) return false;
+  return true;
+}
+
+function loadSkinFromStorage() {
+  let stored = null;
+  try { stored = localStorage.getItem(SKIN_STORAGE_KEY); } catch {}
+  if (!stored) {
+    paintDefaultSkin(defaultSkinCtx);
+    skinSourceCtx.clearRect(0, 0, 64, 64);
+    skinSourceCtx.drawImage(defaultSkinCanvas, 0, 0);
+    syncSkinToDataUrl();
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      skinSourceCtx.clearRect(0, 0, 64, 64);
+      skinSourceCtx.drawImage(img, 0, 0, 64, 64);
+      syncSkinToDataUrl();
+      resolve();
+    };
+    img.onerror = () => {
+      paintDefaultSkin(defaultSkinCtx);
+      skinSourceCtx.clearRect(0, 0, 64, 64);
+      skinSourceCtx.drawImage(defaultSkinCanvas, 0, 0);
+      syncSkinToDataUrl();
+      resolve();
+    };
+    img.src = stored;
+  });
+}
+
+function getPartEnabledForPixel(x, y) {
+  const checks = [
+    ["head", partHeadEl?.checked !== false],
+    ["body", partBodyEl?.checked !== false],
+    ["arms", partArmsEl?.checked !== false],
+    ["legs", partLegsEl?.checked !== false],
+  ];
+  for (const [part, enabled] of checks) {
+    for (const r of SKIN_PART_REGIONS[part]) {
+      if (x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h) {
+        return enabled;
+      }
+    }
+  }
+  return true;
+}
+
+function getEditorPixelFromEvent(evt) {
+  const rect = skinEditorCanvasEl.getBoundingClientRect();
+  const px = Math.floor(((evt.clientX - rect.left) / rect.width) * 64);
+  const py = Math.floor(((evt.clientY - rect.top) / rect.height) * 64);
+  return { x: Math.max(0, Math.min(63, px)), y: Math.max(0, Math.min(63, py)) };
+}
+
+function drawOnSkinAt(x, y) {
+  const half = Math.floor(skinBrushSize / 2);
+  for (let oy = 0; oy < skinBrushSize; oy += 1) {
+    for (let ox = 0; ox < skinBrushSize; ox += 1) {
+      const tx = x + ox - half;
+      const ty = y + oy - half;
+      if (tx < 0 || tx > 63 || ty < 0 || ty > 63) continue;
+      if (!getPartEnabledForPixel(tx, ty)) continue;
+      if (skinTool === "eraser") {
+        skinSourceCtx.clearRect(tx, ty, 1, 1);
+      } else {
+        skinSourceCtx.fillStyle = skinColorEl.value;
+        skinSourceCtx.fillRect(tx, ty, 1, 1);
+      }
+    }
+  }
+}
+
+function pushUndoSnapshot() {
+  skinUndoStack.push(cloneSkinSnapshot());
+  if (skinUndoStack.length > 80) skinUndoStack.shift();
+}
+
+function applyCurrentSkinToPreviews() {
+  if (menuSkinAvatar) applySkinToAvatar(menuSkinAvatar, skinSourceCanvas);
+  if (skinEditorPreviewAvatar) applySkinToAvatar(skinEditorPreviewAvatar, skinSourceCanvas);
+}
+
+function setEditorOpen(open) {
+  skinEditorOpen = open;
+  skinEditorEl.classList.toggle("hidden", !open);
+  skinEditorEl.setAttribute("aria-hidden", open ? "false" : "true");
+  if (open) {
+    syncSkinToCanvasView();
+    applyCurrentSkinToPreviews();
+  }
 }
 
 function getBlockColorById(id) {
@@ -628,62 +891,109 @@ function makePartTexture(base, accents = []) {
   });
 }
 
-function createSteveMaterials(part) {
-  if (part === "head") {
-    const side = makePartTexture("#c68642", [{ color: "#a86d37", x: 0, y: 10, w: 16, h: 6 }]);
-    const top = makePartTexture("#d89a56", [{ color: "#a86d37", x: 0, y: 0, w: 16, h: 3 }]);
-    const bottom = makePartTexture("#8f5d2b");
-    const front = makePartTexture("#c68642", [
-      { color: "#3b2a1a", x: 4, y: 6, w: 2, h: 2 },
-      { color: "#3b2a1a", x: 10, y: 6, w: 2, h: 2 },
-      { color: "#9a5f2f", x: 6, y: 10, w: 4, h: 2 },
-      { color: "#7b4a23", x: 0, y: 0, w: 16, h: 4 },
-    ]);
-    const back = makePartTexture("#c68642", [{ color: "#7b4a23", x: 0, y: 0, w: 16, h: 4 }]);
-    return [
-      new THREE.MeshLambertMaterial({ map: side }),
-      new THREE.MeshLambertMaterial({ map: side }),
-      new THREE.MeshLambertMaterial({ map: top }),
-      new THREE.MeshLambertMaterial({ map: bottom }),
-      new THREE.MeshLambertMaterial({ map: front }),
-      new THREE.MeshLambertMaterial({ map: back }),
-    ];
+function buildSkinFaceTexture(skinCanvas, x, y, w, h, flipX = false) {
+  const c = document.createElement("canvas");
+  c.width = 16;
+  c.height = 16;
+  const g = c.getContext("2d");
+  g.imageSmoothingEnabled = false;
+  if (flipX) {
+    g.save();
+    g.translate(16, 0);
+    g.scale(-1, 1);
+    g.drawImage(skinCanvas, x, y, w, h, 0, 0, 16, 16);
+    g.restore();
+  } else {
+    g.drawImage(skinCanvas, x, y, w, h, 0, 0, 16, 16);
   }
-
-  if (part === "body") {
-    const side = makePartTexture("#2e6fb7");
-    const top = makePartTexture("#2d6bad");
-    const bottom = makePartTexture("#2b5f99");
-    const front = makePartTexture("#2e6fb7", [
-      { color: "#7bb2f0", x: 6, y: 3, w: 4, h: 3 },
-      { color: "#1f4f8b", x: 5, y: 11, w: 6, h: 2 },
-    ]);
-    const back = makePartTexture("#2b65a7");
-    return [
-      new THREE.MeshLambertMaterial({ map: side }),
-      new THREE.MeshLambertMaterial({ map: side }),
-      new THREE.MeshLambertMaterial({ map: top }),
-      new THREE.MeshLambertMaterial({ map: bottom }),
-      new THREE.MeshLambertMaterial({ map: front }),
-      new THREE.MeshLambertMaterial({ map: back }),
-    ];
-  }
-
-  if (part === "arm") {
-    const skin = makePartTexture("#c68642");
-    return new THREE.MeshLambertMaterial({ map: skin });
-  }
-
-  const leg = makePartTexture("#3d5db1", [{ color: "#2b4489", x: 0, y: 12, w: 16, h: 4 }]);
-  return new THREE.MeshLambertMaterial({ map: leg });
+  const tex = new THREE.CanvasTexture(c);
+  tex.magFilter = THREE.NearestFilter;
+  tex.minFilter = THREE.NearestFilter;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
 }
 
-function createSteveAvatar() {
+function buildSkinMaterialSet(skinCanvas, part, side = "right") {
+  let faces;
+  if (part === "head") {
+    faces = {
+      right: [0, 8, 8, 8],
+      left: [16, 8, 8, 8],
+      top: [8, 0, 8, 8],
+      bottom: [16, 0, 8, 8],
+      front: [8, 8, 8, 8],
+      back: [24, 8, 8, 8],
+    };
+  } else if (part === "body") {
+    faces = {
+      right: [16, 20, 4, 12],
+      left: [28, 20, 4, 12],
+      top: [20, 16, 8, 4],
+      bottom: [28, 16, 8, 4],
+      front: [20, 20, 8, 12],
+      back: [32, 20, 8, 12],
+    };
+  } else if (part === "arm") {
+    const baseX = side === "left" ? 32 : 40;
+    faces = {
+      right: [baseX, 20, 4, 12],
+      left: [baseX + 8, 20, 4, 12],
+      top: [baseX + 4, 16, 4, 4],
+      bottom: [baseX + 8, 16, 4, 4],
+      front: [baseX + 4, 20, 4, 12],
+      back: [baseX + 12, 20, 4, 12],
+    };
+  } else {
+    const baseX = side === "left" ? 16 : 0;
+    faces = {
+      right: [baseX, 20, 4, 12],
+      left: [baseX + 8, 20, 4, 12],
+      top: [baseX + 4, 16, 4, 4],
+      bottom: [baseX + 8, 16, 4, 4],
+      front: [baseX + 4, 20, 4, 12],
+      back: [baseX + 12, 20, 4, 12],
+    };
+  }
+
+  const mk = (face) => {
+    const [x, y, w, h] = faces[face];
+    return new THREE.MeshLambertMaterial({ map: buildSkinFaceTexture(skinCanvas, x, y, w, h), transparent: true });
+  };
+  return [mk("right"), mk("left"), mk("top"), mk("bottom"), mk("front"), mk("back")];
+}
+
+function disposeSkinMaterials(material) {
+  const arr = Array.isArray(material) ? material : [material];
+  for (const m of arr) {
+    if (m?.map) m.map.dispose();
+    if (m) m.dispose();
+  }
+}
+
+function applySkinToAvatar(avatar, skinCanvas) {
+  if (!avatar || !skinCanvas) return;
+  if (avatar.bodyMesh?.material) disposeSkinMaterials(avatar.bodyMesh.material);
+  if (avatar.headMesh?.material) disposeSkinMaterials(avatar.headMesh.material);
+  if (avatar.leftArmMesh?.material) disposeSkinMaterials(avatar.leftArmMesh.material);
+  if (avatar.rightArmMesh?.material) disposeSkinMaterials(avatar.rightArmMesh.material);
+  if (avatar.leftLegMesh?.material) disposeSkinMaterials(avatar.leftLegMesh.material);
+  if (avatar.rightLegMesh?.material) disposeSkinMaterials(avatar.rightLegMesh.material);
+
+  avatar.bodyMesh.material = buildSkinMaterialSet(skinCanvas, "body");
+  avatar.headMesh.material = buildSkinMaterialSet(skinCanvas, "head");
+  avatar.leftArmMesh.material = buildSkinMaterialSet(skinCanvas, "arm", "left");
+  avatar.rightArmMesh.material = buildSkinMaterialSet(skinCanvas, "arm", "right");
+  avatar.leftLegMesh.material = buildSkinMaterialSet(skinCanvas, "leg", "left");
+  avatar.rightLegMesh.material = buildSkinMaterialSet(skinCanvas, "leg", "right");
+}
+
+function createSteveAvatar(options = {}) {
+  const skinCanvas = options.skinCanvas || skinSourceCanvas;
   const root = new THREE.Group();
 
   const bodyMesh = new THREE.Mesh(
     new THREE.BoxGeometry(0.56, 0.72, 0.28),
-    createSteveMaterials("body")
+    buildSkinMaterialSet(skinCanvas, "body")
   );
   bodyMesh.position.set(0, 1.08, 0);
   root.add(bodyMesh);
@@ -692,7 +1002,7 @@ function createSteveAvatar() {
   headPivot.position.set(0, 1.44, 0);
   const headMesh = new THREE.Mesh(
     new THREE.BoxGeometry(0.48, 0.48, 0.48),
-    createSteveMaterials("head")
+    buildSkinMaterialSet(skinCanvas, "head")
   );
   headMesh.position.set(0, 0.24, 0);
   headPivot.add(headMesh);
@@ -702,7 +1012,7 @@ function createSteveAvatar() {
   leftArmPivot.position.set(0.39, 1.38, 0);
   const leftArmMesh = new THREE.Mesh(
     new THREE.BoxGeometry(0.22, 0.72, 0.22),
-    createSteveMaterials("arm")
+    buildSkinMaterialSet(skinCanvas, "arm", "left")
   );
   leftArmMesh.position.set(0, -0.36, 0);
   leftArmPivot.add(leftArmMesh);
@@ -712,7 +1022,7 @@ function createSteveAvatar() {
   rightArmPivot.position.set(-0.39, 1.38, 0);
   const rightArmMesh = new THREE.Mesh(
     new THREE.BoxGeometry(0.22, 0.72, 0.22),
-    createSteveMaterials("arm")
+    buildSkinMaterialSet(skinCanvas, "arm", "right")
   );
   rightArmMesh.position.set(0, -0.36, 0);
   rightArmPivot.add(rightArmMesh);
@@ -722,7 +1032,7 @@ function createSteveAvatar() {
   leftLegPivot.position.set(0.14, 0.75, 0);
   const leftLegMesh = new THREE.Mesh(
     new THREE.BoxGeometry(0.24, 0.75, 0.24),
-    createSteveMaterials("leg")
+    buildSkinMaterialSet(skinCanvas, "leg", "left")
   );
   leftLegMesh.position.set(0, -0.375, 0);
   leftLegPivot.add(leftLegMesh);
@@ -732,7 +1042,7 @@ function createSteveAvatar() {
   rightLegPivot.position.set(-0.14, 0.75, 0);
   const rightLegMesh = new THREE.Mesh(
     new THREE.BoxGeometry(0.24, 0.75, 0.24),
-    createSteveMaterials("leg")
+    buildSkinMaterialSet(skinCanvas, "leg", "right")
   );
   rightLegMesh.position.set(0, -0.375, 0);
   rightLegPivot.add(rightLegMesh);
@@ -758,6 +1068,12 @@ function createSteveAvatar() {
     rightArmPivot,
     leftLegPivot,
     rightLegPivot,
+    bodyMesh,
+    headMesh,
+    leftArmMesh,
+    rightArmMesh,
+    leftLegMesh,
+    rightLegMesh,
     targetPos: new THREE.Vector3(0, 0, 0),
     yaw: 0,
     pitch: 0,
@@ -1404,6 +1720,7 @@ function removeRemotePlayer(id) {
   if (rp.nameSprite && rp.nameSprite.material) rp.nameSprite.material.dispose();
   remotePlayersGroup.remove(rp.root);
   remotePlayers.delete(id);
+  remoteSkins.delete(id);
 }
 
 function clearAllRemotePlayers() {
@@ -1420,6 +1737,7 @@ function returnToMenuForReconnect(statusText) {
   gameStarted = false;
   pointerLocked = false;
   startMenuEl.classList.remove("hidden");
+  menuPanoramaEl?.classList.remove("hidden");
   hidePingOverlay();
   if (chatHideTimer) {
     clearTimeout(chatHideTimer);
@@ -1470,7 +1788,21 @@ function handlePeerMessage(peerId, msg) {
   if (msg.type === "move") {
     let rp = remotePlayers.get(peerId);
     if (!rp) {
-      rp = createSteveAvatar();
+      const rc = document.createElement("canvas");
+      rc.width = 64;
+      rc.height = 64;
+      const rctx = rc.getContext("2d", { willReadFrequently: true });
+      rctx.drawImage(skinSourceCanvas, 0, 0);
+      if (remoteSkins.has(peerId)) {
+        const img = new Image();
+        img.src = remoteSkins.get(peerId);
+        img.onload = () => {
+          rctx.clearRect(0, 0, 64, 64);
+          rctx.drawImage(img, 0, 0, 64, 64);
+          applySkinToAvatar(rp, rc);
+        };
+      }
+      rp = createSteveAvatar({ skinCanvas: rc });
       remotePlayersGroup.add(rp.root);
       remotePlayers.set(peerId, rp);
     }
@@ -1606,6 +1938,27 @@ function connectToRoom(code, mode) {
         updatePingOverlay();
       }
 
+      if (msg.type === "skin_update") {
+        const peerId = String(msg.clientId || "");
+        const skin = String(msg.skin || "");
+        if (peerId && isValidSkinDataUrl(skin)) {
+          remoteSkins.set(peerId, skin);
+          const rp = remotePlayers.get(peerId);
+          if (rp) {
+            const img = new Image();
+            img.onload = () => {
+              const c = document.createElement("canvas");
+              c.width = 64;
+              c.height = 64;
+              const cctx = c.getContext("2d", { willReadFrequently: true });
+              cctx.drawImage(img, 0, 0, 64, 64);
+              applySkinToAvatar(rp, c);
+            };
+            img.src = skin;
+          }
+        }
+      }
+
       if (msg.type === "block_set") {
         handlePeerMessage(msg.clientId, msg);
       }
@@ -1660,6 +2013,7 @@ function beginGame() {
   if (gameStarted) return;
   gameStarted = true;
   startMenuEl.classList.add("hidden");
+  menuPanoramaEl?.classList.add("hidden");
   scheduleChatAutoHide();
   spawnAtSafePlace();
   syncHotbarFromInventory();
@@ -1684,7 +2038,8 @@ settingsBtnEl.addEventListener("click", () => {
 });
 
 customizeSkinBtnEl.addEventListener("click", () => {
-  menuStatusEl.textContent = "Кастомизация скина будет добавлена позже.";
+  setEditorOpen(true);
+  menuStatusEl.textContent = "";
 });
 
 backMainBtnEl.addEventListener("click", () => {
@@ -1832,6 +2187,21 @@ function sendPlayerState(dt) {
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ type: "peer_state", roomCode, state: payload }));
   }
+}
+
+let skinSyncAccumulator = 0;
+function sendSkinState(dt) {
+  if (!gameStarted || !isConnectedToRoom()) return;
+  skinSyncAccumulator += dt;
+  if (skinSyncAccumulator < 2) return;
+  skinSyncAccumulator = 0;
+  if (!localSkinDataUrl) syncSkinToDataUrl();
+  if (!isValidSkinDataUrl(localSkinDataUrl)) return;
+  ws.send(JSON.stringify({
+    type: "skin_update",
+    roomCode,
+    skin: localSkinDataUrl,
+  }));
 }
 
 function sendPingRequests(dt) {
@@ -2007,6 +2377,53 @@ function initMenuSkin3d() {
   window.addEventListener("resize", resizeSkinRenderer);
 }
 
+function initSkinEditorPreview() {
+  if (!skinPreview3dEl || skinEditorPreviewRenderer) return;
+  skinEditorPreviewScene = new THREE.Scene();
+  skinEditorPreviewCamera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
+  skinEditorPreviewCamera.position.set(1.9, 1.6, 2.8);
+  skinEditorPreviewCamera.lookAt(0, 1.1, 0);
+
+  const hemiLight = new THREE.HemisphereLight(0xffffff, 0x7b6a55, 0.95);
+  skinEditorPreviewScene.add(hemiLight);
+  const dirLight = new THREE.DirectionalLight(0xffffff, 0.7);
+  dirLight.position.set(3, 4, 2);
+  skinEditorPreviewScene.add(dirLight);
+
+  skinEditorPreviewAvatar = createSteveAvatar({ skinCanvas: skinSourceCanvas });
+  if (skinEditorPreviewAvatar.nameSprite) skinEditorPreviewAvatar.nameSprite.visible = false;
+  skinEditorPreviewScene.add(skinEditorPreviewAvatar.root);
+
+  skinEditorPreviewRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  skinEditorPreviewRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  skinEditorPreviewRenderer.setClearColor(0x000000, 0);
+  skinPreview3dEl.append(skinEditorPreviewRenderer.domElement);
+
+  function resizePreview() {
+    if (!skinEditorPreviewRenderer || !skinEditorPreviewCamera || !skinPreview3dEl) return;
+    const w = Math.max(1, skinPreview3dEl.clientWidth);
+    const h = Math.max(1, skinPreview3dEl.clientHeight);
+    skinEditorPreviewRenderer.setSize(w, h, false);
+    skinEditorPreviewCamera.aspect = w / h;
+    skinEditorPreviewCamera.updateProjectionMatrix();
+  }
+  resizePreview();
+  window.addEventListener("resize", resizePreview);
+}
+
+function updateSkinEditorPreview(dt) {
+  if (!skinEditorPreviewRenderer || !skinEditorPreviewScene || !skinEditorPreviewCamera || !skinEditorPreviewAvatar) return;
+  if (!skinEditorOpen) return;
+  skinEditorPreviewAvatar.root.rotation.y += dt * 1.15;
+  skinEditorPreviewAvatar.phase += dt * 6.4;
+  const swing = Math.sin(skinEditorPreviewAvatar.phase) * 0.4;
+  skinEditorPreviewAvatar.leftArmPivot.rotation.x = swing;
+  skinEditorPreviewAvatar.rightArmPivot.rotation.x = -swing;
+  skinEditorPreviewAvatar.leftLegPivot.rotation.x = -swing;
+  skinEditorPreviewAvatar.rightLegPivot.rotation.x = swing;
+  skinEditorPreviewRenderer.render(skinEditorPreviewScene, skinEditorPreviewCamera);
+}
+
 function updateMenuSkin3d(dt) {
   if (!menuSkinRenderer || !menuSkinScene || !menuSkinCamera || !menuSkinAvatar) return;
   menuSkinAvatar.root.rotation.y += dt * 1.1;
@@ -2017,6 +2434,149 @@ function updateMenuSkin3d(dt) {
   menuSkinAvatar.leftLegPivot.rotation.x = -swing;
   menuSkinAvatar.rightLegPivot.rotation.x = swing;
   menuSkinRenderer.render(menuSkinScene, menuSkinCamera);
+}
+
+function initSkinEditorUi() {
+  if (!skinEditorCanvasEl) return;
+
+  skinSourceCtx.imageSmoothingEnabled = false;
+  paintDefaultSkin(defaultSkinCtx);
+
+  for (const color of SKIN_PALETTE) {
+    const sw = document.createElement("button");
+    sw.type = "button";
+    sw.className = "skin-color-swatch";
+    sw.style.background = color;
+    sw.addEventListener("click", () => {
+      skinColorEl.value = color;
+    });
+    skinPaletteEl.append(sw);
+  }
+
+  toolBrushEl.addEventListener("click", () => { skinTool = "brush"; });
+  toolEraserEl.addEventListener("click", () => { skinTool = "eraser"; });
+  toolSizeEl.addEventListener("change", () => {
+    skinBrushSize = Math.max(1, Math.min(16, Number(toolSizeEl.value) || 1));
+  });
+
+  toolUndoEl.addEventListener("click", () => {
+    if (!skinUndoStack.length) return;
+    skinRedoStack.push(cloneSkinSnapshot());
+    restoreSkinSnapshot(skinUndoStack.pop());
+    syncSkinToCanvasView();
+    applyCurrentSkinToPreviews();
+  });
+
+  toolRedoEl.addEventListener("click", () => {
+    if (!skinRedoStack.length) return;
+    skinUndoStack.push(cloneSkinSnapshot());
+    restoreSkinSnapshot(skinRedoStack.pop());
+    syncSkinToCanvasView();
+    applyCurrentSkinToPreviews();
+  });
+
+  const startDraw = (evt) => {
+    evt.preventDefault();
+    const point = evt.touches?.[0] ?? evt;
+    if (!skinSnapshotCaptured) {
+      pushUndoSnapshot();
+      skinRedoStack = [];
+      skinSnapshotCaptured = true;
+    }
+    skinDrawing = true;
+    const p = getEditorPixelFromEvent(point);
+    drawOnSkinAt(p.x, p.y);
+    syncSkinToCanvasView();
+    applyCurrentSkinToPreviews();
+  };
+
+  const moveDraw = (evt) => {
+    if (!skinDrawing) return;
+    evt.preventDefault();
+    const point = evt.touches?.[0] ?? evt;
+    const p = getEditorPixelFromEvent(point);
+    drawOnSkinAt(p.x, p.y);
+    syncSkinToCanvasView();
+    applyCurrentSkinToPreviews();
+  };
+
+  const endDraw = () => {
+    skinDrawing = false;
+    skinSnapshotCaptured = false;
+  };
+
+  skinEditorCanvasEl.addEventListener("mousedown", startDraw);
+  skinEditorCanvasEl.addEventListener("mousemove", moveDraw);
+  window.addEventListener("mouseup", endDraw);
+
+  skinEditorCanvasEl.addEventListener("touchstart", (evt) => {
+    if (!evt.touches?.length) return;
+    startDraw(evt);
+  }, { passive: false });
+  skinEditorCanvasEl.addEventListener("touchmove", (evt) => {
+    if (!evt.touches?.length) return;
+    moveDraw(evt);
+  }, { passive: false });
+  window.addEventListener("touchend", endDraw, { passive: true });
+
+  skinImportBtnEl.addEventListener("click", () => skinImportFileEl.click());
+  skinImportFileEl.addEventListener("change", () => {
+    const file = skinImportFileEl.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        if (img.width !== 64 || img.height !== 64) {
+          menuStatusEl.textContent = "Импорт поддерживает только PNG скины 64x64.";
+          return;
+        }
+        pushUndoSnapshot();
+        skinRedoStack = [];
+        skinSourceCtx.clearRect(0, 0, 64, 64);
+        skinSourceCtx.drawImage(img, 0, 0, 64, 64);
+        saveSkinToStorage();
+        syncSkinToCanvasView();
+        applyCurrentSkinToPreviews();
+      };
+      img.src = String(reader.result || "");
+    };
+    reader.readAsDataURL(file);
+    skinImportFileEl.value = "";
+  });
+
+  skinExportBtnEl.addEventListener("click", () => {
+    const a = document.createElement("a");
+    a.href = skinSourceCanvas.toDataURL("image/png");
+    a.download = "skin.png";
+    a.click();
+  });
+
+  skinSaveBtnEl.addEventListener("click", () => {
+    saveSkinToStorage();
+    applyCurrentSkinToPreviews();
+    menuStatusEl.textContent = "Скин сохранён.";
+    setEditorOpen(false);
+  });
+
+  skinCloseBtnEl.addEventListener("click", () => {
+    setEditorOpen(false);
+  });
+
+  const applyPartVisibility = () => {
+    if (!skinEditorPreviewAvatar) return;
+    skinEditorPreviewAvatar.headMesh.visible = partHeadEl.checked;
+    skinEditorPreviewAvatar.bodyMesh.visible = partBodyEl.checked;
+    skinEditorPreviewAvatar.leftArmMesh.visible = partArmsEl.checked;
+    skinEditorPreviewAvatar.rightArmMesh.visible = partArmsEl.checked;
+    skinEditorPreviewAvatar.leftLegMesh.visible = partLegsEl.checked;
+    skinEditorPreviewAvatar.rightLegMesh.visible = partLegsEl.checked;
+  };
+  partHeadEl.addEventListener("change", applyPartVisibility);
+  partBodyEl.addEventListener("change", applyPartVisibility);
+  partArmsEl.addEventListener("change", applyPartVisibility);
+  partLegsEl.addEventListener("change", applyPartVisibility);
+  applyPartVisibility();
 }
 
 let last = performance.now();
@@ -2036,6 +2596,7 @@ function animate(now) {
   updateTargetBlock();
   flushDirtyChunks();
   sendPlayerState(dt);
+  sendSkinState(dt);
   sendPingRequests(dt);
   updateRemotePlayersAnimation(dt);
 
@@ -2055,6 +2616,7 @@ function animateMenu(now) {
   if (!gameStarted) {
     updateMenuPanorama(dt);
     updateMenuSkin3d(dt);
+    updateSkinEditorPreview(dt);
   }
   requestAnimationFrame(animateMenu);
 }
@@ -2064,6 +2626,14 @@ updateLobbyStartButtonState();
 hidePingOverlay();
 syncLocalNickname();
 
-initMenuSkin3d();
-initMenuPanorama();
-requestAnimationFrame(animateMenu);
+Promise.resolve()
+  .then(() => loadSkinFromStorage())
+  .then(() => {
+    initMenuSkin3d();
+    initMenuPanorama();
+    initSkinEditorPreview();
+    initSkinEditorUi();
+    applyCurrentSkinToPreviews();
+    syncSkinToCanvasView();
+    requestAnimationFrame(animateMenu);
+  });
