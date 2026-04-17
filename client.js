@@ -2891,6 +2891,16 @@ function initSkinEditorPreview() {
       skinOrbiting = true;
       return;
     }
+    const isMeshPaintEnabled = (obj) => {
+      if (obj === skinEditorPreviewAvatar.headMesh || obj === skinEditorPreviewAvatar.headOverlayMesh) return partHeadEl.checked;
+      if (obj === skinEditorPreviewAvatar.bodyMesh || obj === skinEditorPreviewAvatar.bodyOverlayMesh) return partBodyEl.checked;
+      if (obj === skinEditorPreviewAvatar.rightArmMesh || obj === skinEditorPreviewAvatar.rightArmOverlayMesh) return partRightArmEl.checked;
+      if (obj === skinEditorPreviewAvatar.leftArmMesh || obj === skinEditorPreviewAvatar.leftArmOverlayMesh) return partLeftArmEl.checked;
+      if (obj === skinEditorPreviewAvatar.rightLegMesh || obj === skinEditorPreviewAvatar.rightLegOverlayMesh) return partRightLegEl.checked;
+      if (obj === skinEditorPreviewAvatar.leftLegMesh || obj === skinEditorPreviewAvatar.leftLegOverlayMesh) return partLeftLegEl.checked;
+      return true;
+    };
+
     const ray = new THREE.Raycaster();
     const rect = skinEditor3dEl.getBoundingClientRect();
     const nx = ((evt.clientX - rect.left) / rect.width) * 2 - 1;
@@ -2909,7 +2919,7 @@ function initSkinEditorPreview() {
       skinEditorPreviewAvatar.rightArmOverlayMesh,
       skinEditorPreviewAvatar.leftLegOverlayMesh,
       skinEditorPreviewAvatar.rightLegOverlayMesh,
-    ].filter(Boolean);
+    ].filter((m) => Boolean(m && m.visible && isMeshPaintEnabled(m)));
     const hits = ray.intersectObjects(meshes, false);
     if (!hits.length) return;
 
@@ -2969,7 +2979,7 @@ function initSkinEditorPreview() {
     const py = Math.max(0, Math.min(faceRect.h - 1, Math.floor((1 - uv.y) * faceRect.h)));
     const tx = faceRect.x + px;
     const ty = faceRect.y + py;
-    if (!getPartEnabledForPixel(tx, ty)) return;
+    if (!isMeshPaintEnabled(hit.object)) return;
     if (!canPaintByLayer(tx, ty) && skinTool !== "picker") return;
 
     const isOverlayMesh = isOverlayObject(hit.object);
