@@ -210,11 +210,19 @@ body {
   display: none !important;
 }
 
-canvas {
+.game-canvas {
   position: fixed;
   inset: 0;
   width: 100vw;
   height: 100vh;
+  display: block;
+}
+
+.menu-skin-3d canvas {
+  position: static;
+  inset: auto;
+  width: 100% !important;
+  height: 100% !important;
   display: block;
 }
 

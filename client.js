@@ -452,6 +452,7 @@ const renderer = new THREE.WebGLRenderer({ antialias: false });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = false;
+renderer.domElement.classList.add("game-canvas");
 document.body.appendChild(renderer.domElement);
 
 const hemi = new THREE.HemisphereLight(0xb9d9ff, 0x5f6248, 1.1);
