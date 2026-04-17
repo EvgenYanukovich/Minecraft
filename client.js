@@ -1915,7 +1915,7 @@ function initMenuPanorama() {
       }
 
       const treeNoise = Math.abs(Math.sin(x * 11.13 + z * 7.91));
-      if (treeNoise > 0.988 && h > 6 && d < radius - 4) {
+      if (treeNoise > 0.9975 && h > 6 && d < radius - 4) {
         const trunk = 3;
         for (let i = 0; i < trunk; i += 1) {
           const log = new THREE.Mesh(blockGeo, woodMat);
@@ -1964,8 +1964,7 @@ function updateMenuPanorama(dt) {
   const angle = panoramaTime * 0.11;
   const camX = Math.cos(angle) * r;
   const camZ = Math.sin(angle) * r;
-  const groundY = getPanoramaHeightAt(camX, camZ);
-  const y = groundY + 4.8 + Math.sin(panoramaTime * 0.23) * 0.22;
+  const y = 18;
   panoramaCamera.position.set(camX, y, camZ);
   panoramaCamera.lookAt(0, 7.5, 0);
   panoramaRenderer.render(panoramaScene, panoramaCamera);
