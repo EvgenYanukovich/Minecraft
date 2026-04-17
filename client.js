@@ -126,6 +126,13 @@ const pendingPings = new Map();
 const playerPings = new Map();
 const remoteSkins = new Map();
 
+const skinRect = (x1, y1, x2, y2) => ({
+  x: x1 - 1,
+  y: y1 - 1,
+  w: x2 - x1 + 1,
+  h: y2 - y1 + 1,
+});
+
 const SKIN_STORAGE_KEY = "browsercraft_skin_v1";
 const SKIN_MAX_DATA_URL_LENGTH = 350000;
 let localSkinDataUrl = null;
@@ -136,6 +143,7 @@ let skinDrawing = false;
 let skinUndoStack = [];
 let skinRedoStack = [];
 let skinSnapshotCaptured = false;
+let skinSourceSize = 64;
 
 const skinSourceCanvas = document.createElement("canvas");
 skinSourceCanvas.width = 64;
@@ -160,48 +168,48 @@ const SKIN_PALETTE = [
 
 const SKIN_PART_REGIONS = {
   head: [
-    { x: 8, y: 0, w: 8, h: 8 }, { x: 16, y: 0, w: 8, h: 8 },
-    { x: 0, y: 8, w: 8, h: 8 }, { x: 8, y: 8, w: 8, h: 8 },
-    { x: 16, y: 8, w: 8, h: 8 }, { x: 24, y: 8, w: 8, h: 8 },
-    { x: 40, y: 0, w: 8, h: 8 }, { x: 48, y: 0, w: 8, h: 8 },
-    { x: 32, y: 8, w: 8, h: 8 }, { x: 40, y: 8, w: 8, h: 8 },
-    { x: 48, y: 8, w: 8, h: 8 }, { x: 56, y: 8, w: 8, h: 8 },
+    skinRect(9, 1, 16, 8), skinRect(17, 1, 24, 8),
+    skinRect(1, 9, 8, 16), skinRect(9, 9, 16, 16),
+    skinRect(17, 9, 24, 16), skinRect(25, 9, 32, 16),
+    skinRect(41, 1, 48, 8), skinRect(49, 1, 56, 8),
+    skinRect(33, 9, 40, 16), skinRect(41, 9, 48, 16),
+    skinRect(49, 9, 56, 16), skinRect(57, 9, 64, 16),
   ],
   body: [
-    { x: 20, y: 16, w: 8, h: 4 }, { x: 28, y: 16, w: 8, h: 4 },
-    { x: 16, y: 20, w: 4, h: 12 }, { x: 20, y: 20, w: 8, h: 12 },
-    { x: 28, y: 20, w: 4, h: 12 }, { x: 32, y: 20, w: 8, h: 12 },
-    { x: 20, y: 32, w: 8, h: 4 }, { x: 28, y: 32, w: 8, h: 4 },
-    { x: 16, y: 36, w: 4, h: 12 }, { x: 20, y: 36, w: 8, h: 12 },
-    { x: 28, y: 36, w: 4, h: 12 }, { x: 32, y: 36, w: 8, h: 12 },
+    skinRect(21, 17, 28, 20), skinRect(29, 17, 36, 20),
+    skinRect(17, 21, 20, 32), skinRect(21, 21, 28, 32),
+    skinRect(29, 21, 32, 32), skinRect(33, 21, 40, 32),
+    skinRect(21, 33, 28, 36), skinRect(29, 33, 36, 36),
+    skinRect(17, 37, 20, 48), skinRect(21, 37, 28, 48),
+    skinRect(29, 37, 32, 48), skinRect(33, 37, 40, 48),
   ],
   arms: [
-    { x: 44, y: 16, w: 4, h: 4 }, { x: 48, y: 16, w: 4, h: 4 },
-    { x: 40, y: 20, w: 4, h: 12 }, { x: 44, y: 20, w: 4, h: 12 },
-    { x: 48, y: 20, w: 4, h: 12 }, { x: 52, y: 20, w: 4, h: 12 },
-    { x: 44, y: 32, w: 4, h: 4 }, { x: 48, y: 32, w: 4, h: 4 },
-    { x: 40, y: 36, w: 4, h: 12 }, { x: 44, y: 36, w: 4, h: 12 },
-    { x: 48, y: 36, w: 4, h: 12 }, { x: 52, y: 36, w: 4, h: 12 },
-    { x: 36, y: 48, w: 4, h: 4 }, { x: 40, y: 48, w: 4, h: 4 },
-    { x: 32, y: 52, w: 4, h: 12 }, { x: 36, y: 52, w: 4, h: 12 },
-    { x: 40, y: 52, w: 4, h: 12 }, { x: 44, y: 52, w: 4, h: 12 },
-    { x: 52, y: 48, w: 4, h: 4 }, { x: 56, y: 48, w: 4, h: 4 },
-    { x: 48, y: 52, w: 4, h: 12 }, { x: 52, y: 52, w: 4, h: 12 },
-    { x: 56, y: 52, w: 4, h: 12 }, { x: 60, y: 52, w: 4, h: 12 },
+    skinRect(45, 17, 48, 20), skinRect(49, 17, 52, 20),
+    skinRect(41, 21, 44, 32), skinRect(45, 21, 48, 32),
+    skinRect(49, 21, 52, 32), skinRect(53, 21, 56, 32),
+    skinRect(45, 33, 48, 36), skinRect(49, 33, 52, 36),
+    skinRect(41, 37, 44, 48), skinRect(45, 37, 48, 48),
+    skinRect(49, 37, 52, 48), skinRect(53, 37, 56, 48),
+    skinRect(37, 49, 40, 52), skinRect(41, 49, 44, 52),
+    skinRect(33, 53, 36, 64), skinRect(37, 53, 40, 64),
+    skinRect(41, 53, 44, 64), skinRect(45, 53, 48, 64),
+    skinRect(53, 49, 56, 52), skinRect(57, 49, 60, 52),
+    skinRect(49, 53, 52, 64), skinRect(53, 53, 56, 64),
+    skinRect(57, 53, 60, 64), skinRect(61, 53, 64, 64),
   ],
   legs: [
-    { x: 4, y: 16, w: 4, h: 4 }, { x: 8, y: 16, w: 4, h: 4 },
-    { x: 0, y: 20, w: 4, h: 12 }, { x: 4, y: 20, w: 4, h: 12 },
-    { x: 8, y: 20, w: 4, h: 12 }, { x: 12, y: 20, w: 4, h: 12 },
-    { x: 4, y: 32, w: 4, h: 4 }, { x: 8, y: 32, w: 4, h: 4 },
-    { x: 0, y: 36, w: 4, h: 12 }, { x: 4, y: 36, w: 4, h: 12 },
-    { x: 8, y: 36, w: 4, h: 12 }, { x: 12, y: 36, w: 4, h: 12 },
-    { x: 20, y: 48, w: 4, h: 4 }, { x: 24, y: 48, w: 4, h: 4 },
-    { x: 16, y: 52, w: 4, h: 12 }, { x: 20, y: 52, w: 4, h: 12 },
-    { x: 24, y: 52, w: 4, h: 12 }, { x: 28, y: 52, w: 4, h: 12 },
-    { x: 4, y: 48, w: 4, h: 4 }, { x: 8, y: 48, w: 4, h: 4 },
-    { x: 0, y: 52, w: 4, h: 12 }, { x: 4, y: 52, w: 4, h: 12 },
-    { x: 8, y: 52, w: 4, h: 12 }, { x: 12, y: 52, w: 4, h: 12 },
+    skinRect(5, 17, 8, 20), skinRect(9, 17, 12, 20),
+    skinRect(1, 21, 4, 32), skinRect(5, 21, 8, 32),
+    skinRect(9, 21, 12, 32), skinRect(13, 21, 16, 32),
+    skinRect(5, 33, 8, 36), skinRect(9, 33, 12, 36),
+    skinRect(1, 37, 4, 48), skinRect(5, 37, 8, 48),
+    skinRect(9, 37, 12, 48), skinRect(13, 37, 16, 48),
+    skinRect(21, 49, 24, 52), skinRect(25, 49, 28, 52),
+    skinRect(17, 53, 20, 64), skinRect(21, 53, 24, 64),
+    skinRect(25, 53, 28, 64), skinRect(29, 53, 32, 64),
+    skinRect(5, 49, 8, 52), skinRect(9, 49, 12, 52),
+    skinRect(1, 53, 4, 64), skinRect(5, 53, 8, 64),
+    skinRect(9, 53, 12, 64), skinRect(13, 53, 16, 64),
   ],
 };
 
@@ -243,7 +251,7 @@ function markPanoramaOccupied(x, z, topY) {
 }
 
 function paintDefaultSkin(ctx) {
-  ctx.clearRect(0, 0, 64, 64);
+  ctx.clearRect(0, 0, skinSourceSize, skinSourceSize);
 
   const skin = "#c68642";
   const hair = "#7b4a23";
@@ -300,7 +308,7 @@ function paintDefaultSkin(ctx) {
 }
 
 function cloneSkinSnapshot() {
-  return skinSourceCtx.getImageData(0, 0, 64, 64);
+  return skinSourceCtx.getImageData(0, 0, skinSourceSize, skinSourceSize);
 }
 
 function restoreSkinSnapshot(imageData) {
@@ -314,6 +322,23 @@ function syncSkinToCanvasView() {
   ctx.imageSmoothingEnabled = false;
   ctx.clearRect(0, 0, skinEditorCanvasEl.width, skinEditorCanvasEl.height);
   ctx.drawImage(skinSourceCanvas, 0, 0);
+}
+
+function setSkinSourceSize(size) {
+  const next = size === 128 ? 128 : 64;
+  if (skinSourceSize === next && skinSourceCanvas.width === next) return;
+
+  const prev = document.createElement("canvas");
+  prev.width = skinSourceCanvas.width;
+  prev.height = skinSourceCanvas.height;
+  prev.getContext("2d").drawImage(skinSourceCanvas, 0, 0);
+
+  skinSourceCanvas.width = next;
+  skinSourceCanvas.height = next;
+  skinSourceCtx.imageSmoothingEnabled = false;
+  skinSourceCtx.clearRect(0, 0, next, next);
+  skinSourceCtx.drawImage(prev, 0, 0, prev.width, prev.height, 0, 0, next, next);
+  skinSourceSize = next;
 }
 
 function syncSkinToDataUrl() {
@@ -337,7 +362,8 @@ function loadSkinFromStorage() {
   try { stored = localStorage.getItem(SKIN_STORAGE_KEY); } catch {}
   if (!stored) {
     paintDefaultSkin(defaultSkinCtx);
-    skinSourceCtx.clearRect(0, 0, 64, 64);
+    setSkinSourceSize(64);
+    skinSourceCtx.clearRect(0, 0, skinSourceSize, skinSourceSize);
     skinSourceCtx.drawImage(defaultSkinCanvas, 0, 0);
     syncSkinToDataUrl();
     return Promise.resolve();
@@ -346,14 +372,16 @@ function loadSkinFromStorage() {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
-      skinSourceCtx.clearRect(0, 0, 64, 64);
-      skinSourceCtx.drawImage(img, 0, 0, 64, 64);
+      setSkinSourceSize(img.width === 128 && img.height === 128 ? 128 : 64);
+      skinSourceCtx.clearRect(0, 0, skinSourceSize, skinSourceSize);
+      skinSourceCtx.drawImage(img, 0, 0, skinSourceSize, skinSourceSize);
       syncSkinToDataUrl();
       resolve();
     };
     img.onerror = () => {
       paintDefaultSkin(defaultSkinCtx);
-      skinSourceCtx.clearRect(0, 0, 64, 64);
+      setSkinSourceSize(64);
+      skinSourceCtx.clearRect(0, 0, skinSourceSize, skinSourceSize);
       skinSourceCtx.drawImage(defaultSkinCanvas, 0, 0);
       syncSkinToDataUrl();
       resolve();
@@ -381,9 +409,12 @@ function getPartEnabledForPixel(x, y) {
 
 function getEditorPixelFromEvent(evt) {
   const rect = skinEditorCanvasEl.getBoundingClientRect();
-  const px = Math.floor(((evt.clientX - rect.left) / rect.width) * 64);
-  const py = Math.floor(((evt.clientY - rect.top) / rect.height) * 64);
-  return { x: Math.max(0, Math.min(63, px)), y: Math.max(0, Math.min(63, py)) };
+  const px = Math.floor(((evt.clientX - rect.left) / rect.width) * skinSourceSize);
+  const py = Math.floor(((evt.clientY - rect.top) / rect.height) * skinSourceSize);
+  return {
+    x: Math.max(0, Math.min(skinSourceSize - 1, px)),
+    y: Math.max(0, Math.min(skinSourceSize - 1, py)),
+  };
 }
 
 function drawOnSkinAt(x, y) {
@@ -392,7 +423,7 @@ function drawOnSkinAt(x, y) {
     for (let ox = 0; ox < skinBrushSize; ox += 1) {
       const tx = x + ox - half;
       const ty = y + oy - half;
-      if (tx < 0 || tx > 63 || ty < 0 || ty > 63) continue;
+      if (tx < 0 || tx > skinSourceSize - 1 || ty < 0 || ty > skinSourceSize - 1) continue;
       if (!getPartEnabledForPixel(tx, ty)) continue;
       if (skinTool === "eraser") {
         skinSourceCtx.clearRect(tx, ty, 1, 1);
@@ -915,14 +946,19 @@ function buildSkinFaceTexture(skinCanvas, x, y, w, h, flipX = false) {
   c.height = 16;
   const g = c.getContext("2d");
   g.imageSmoothingEnabled = false;
+  const scale = skinCanvas.width / 64;
+  const sx = Math.round(x * scale);
+  const sy = Math.round(y * scale);
+  const sw = Math.round(w * scale);
+  const sh = Math.round(h * scale);
   if (flipX) {
     g.save();
     g.translate(16, 0);
     g.scale(-1, 1);
-    g.drawImage(skinCanvas, x, y, w, h, 0, 0, 16, 16);
+    g.drawImage(skinCanvas, sx, sy, sw, sh, 0, 0, 16, 16);
     g.restore();
   } else {
-    g.drawImage(skinCanvas, x, y, w, h, 0, 0, 16, 16);
+    g.drawImage(skinCanvas, sx, sy, sw, sh, 0, 0, 16, 16);
   }
   const tex = new THREE.CanvasTexture(c);
   tex.magFilter = THREE.NearestFilter;
@@ -933,70 +969,124 @@ function buildSkinFaceTexture(skinCanvas, x, y, w, h, flipX = false) {
 
 function buildSkinMaterialSet(skinCanvas, part, side = "right", overlay = false) {
   const f = (x, y, w, h, flipX = false) => ({ x, y, w, h, flipX });
+  const R = (x1, y1, x2, y2, flipX = false) => {
+    const r = skinRect(x1, y1, x2, y2);
+    return f(r.x, r.y, r.w, r.h, flipX);
+  };
   let faces;
 
   if (part === "head" && !overlay) {
     faces = {
-      right: f(16, 8, 8, 8),
-      left: f(0, 8, 8, 8),
-      top: f(8, 0, 8, 8),
-      bottom: f(16, 0, 8, 8, true),
-      front: f(8, 8, 8, 8),
-      back: f(24, 8, 8, 8, true),
+      top: R(9, 1, 16, 8),
+      bottom: R(17, 1, 24, 8),
+      left: R(1, 9, 8, 16),
+      front: R(9, 9, 16, 16),
+      right: R(17, 9, 24, 16),
+      back: R(25, 9, 32, 16),
     };
   } else if (part === "head" && overlay) {
     faces = {
-      right: f(48, 8, 8, 8),
-      left: f(32, 8, 8, 8),
-      top: f(40, 0, 8, 8),
-      bottom: f(48, 0, 8, 8, true),
-      front: f(40, 8, 8, 8),
-      back: f(56, 8, 8, 8, true),
+      top: R(41, 1, 48, 8),
+      bottom: R(49, 1, 56, 8),
+      left: R(33, 9, 40, 16),
+      front: R(41, 9, 48, 16),
+      right: R(49, 9, 56, 16),
+      back: R(57, 9, 64, 16),
     };
   } else if (part === "body" && !overlay) {
     faces = {
-      right: f(28, 20, 4, 12),
-      left: f(16, 20, 4, 12),
-      top: f(20, 16, 8, 4),
-      bottom: f(28, 16, 8, 4, true),
-      front: f(20, 20, 8, 12),
-      back: f(32, 20, 8, 12, true),
+      top: R(21, 17, 28, 20),
+      bottom: R(29, 17, 36, 20),
+      left: R(17, 21, 20, 32),
+      front: R(21, 21, 28, 32),
+      right: R(29, 21, 32, 32),
+      back: R(33, 21, 40, 32),
     };
   } else if (part === "body" && overlay) {
     faces = {
-      right: f(28, 36, 4, 12),
-      left: f(16, 36, 4, 12),
-      top: f(20, 32, 8, 4),
-      bottom: f(28, 32, 8, 4, true),
-      front: f(20, 36, 8, 12),
-      back: f(32, 36, 8, 12, true),
+      top: R(21, 33, 28, 36),
+      bottom: R(29, 33, 36, 36),
+      left: R(17, 37, 20, 48),
+      front: R(21, 37, 28, 48),
+      right: R(29, 37, 32, 48),
+      back: R(33, 37, 40, 48),
     };
   } else if (part === "arm") {
-    const baseX = overlay
-      ? (side === "left" ? 48 : 40)
-      : (side === "left" ? 32 : 40);
-    const baseY = overlay
-      ? (side === "left" ? 48 : 32)
-      : (side === "left" ? 48 : 16);
-    faces = {
-      right: f(baseX + 8, baseY + 4, 4, 12),
-      left: f(baseX, baseY + 4, 4, 12),
-      top: f(baseX + 4, baseY, 4, 4),
-      bottom: f(baseX + 8, baseY, 4, 4, true),
-      front: f(baseX + 4, baseY + 4, 4, 12),
-      back: f(baseX + 12, baseY + 4, 4, 12, true),
-    };
+    if (side === "right" && !overlay) {
+      faces = {
+        top: R(45, 17, 48, 20),
+        bottom: R(49, 17, 52, 20),
+        left: R(41, 21, 44, 32),
+        front: R(45, 21, 48, 32),
+        right: R(49, 21, 52, 32),
+        back: R(53, 21, 56, 32),
+      };
+    } else if (side === "right" && overlay) {
+      faces = {
+        top: R(45, 33, 48, 36),
+        bottom: R(49, 33, 52, 36),
+        left: R(41, 37, 44, 48),
+        front: R(45, 37, 48, 48),
+        right: R(49, 37, 52, 48),
+        back: R(53, 37, 56, 48),
+      };
+    } else if (side === "left" && !overlay) {
+      faces = {
+        top: R(37, 49, 40, 52),
+        bottom: R(41, 49, 44, 52),
+        left: R(33, 53, 36, 64),
+        front: R(37, 53, 40, 64),
+        right: R(41, 53, 44, 64),
+        back: R(45, 53, 48, 64),
+      };
+    } else {
+      faces = {
+        top: R(53, 49, 56, 52),
+        bottom: R(57, 49, 60, 52),
+        left: R(49, 53, 52, 64),
+        front: R(53, 53, 56, 64),
+        right: R(57, 53, 60, 64),
+        back: R(61, 53, 64, 64),
+      };
+    }
   } else {
-    const baseX = overlay ? 0 : (side === "left" ? 16 : 0);
-    const baseY = overlay ? (side === "left" ? 48 : 32) : (side === "left" ? 48 : 16);
-    faces = {
-      right: f(baseX + 8, baseY + 4, 4, 12),
-      left: f(baseX, baseY + 4, 4, 12),
-      top: f(baseX + 4, baseY, 4, 4),
-      bottom: f(baseX + 8, baseY, 4, 4, true),
-      front: f(baseX + 4, baseY + 4, 4, 12),
-      back: f(baseX + 12, baseY + 4, 4, 12, true),
-    };
+    if (side === "right" && !overlay) {
+      faces = {
+        top: R(5, 17, 8, 20),
+        bottom: R(9, 17, 12, 20),
+        left: R(1, 21, 4, 32),
+        front: R(5, 21, 8, 32),
+        right: R(9, 21, 12, 32),
+        back: R(13, 21, 16, 32),
+      };
+    } else if (side === "right" && overlay) {
+      faces = {
+        top: R(5, 33, 8, 36),
+        bottom: R(9, 33, 12, 36),
+        left: R(1, 37, 4, 48),
+        front: R(5, 37, 8, 48),
+        right: R(9, 37, 12, 48),
+        back: R(13, 37, 16, 48),
+      };
+    } else if (side === "left" && !overlay) {
+      faces = {
+        top: R(21, 49, 24, 52),
+        bottom: R(25, 49, 28, 52),
+        left: R(17, 53, 20, 64),
+        front: R(21, 53, 24, 64),
+        right: R(25, 53, 28, 64),
+        back: R(29, 53, 32, 64),
+      };
+    } else {
+      faces = {
+        top: R(5, 49, 8, 52),
+        bottom: R(9, 49, 12, 52),
+        left: R(1, 53, 4, 64),
+        front: R(5, 53, 8, 64),
+        right: R(9, 53, 12, 64),
+        back: R(13, 53, 16, 64),
+      };
+    }
   }
 
   const mk = (face) => {
@@ -2635,14 +2725,15 @@ function initSkinEditorUi() {
     reader.onload = () => {
       const img = new Image();
       img.onload = () => {
-        if (img.width !== 64 || img.height !== 64) {
-          menuStatusEl.textContent = "Импорт поддерживает только PNG скины 64x64.";
+        if (!((img.width === 64 && img.height === 64) || (img.width === 128 && img.height === 128))) {
+          menuStatusEl.textContent = "Импорт поддерживает PNG скины только 64x64 или 128x128.";
           return;
         }
         pushUndoSnapshot();
         skinRedoStack = [];
-        skinSourceCtx.clearRect(0, 0, 64, 64);
-        skinSourceCtx.drawImage(img, 0, 0, 64, 64);
+        setSkinSourceSize(img.width);
+        skinSourceCtx.clearRect(0, 0, skinSourceSize, skinSourceSize);
+        skinSourceCtx.drawImage(img, 0, 0, skinSourceSize, skinSourceSize);
         saveSkinToStorage();
         syncSkinToCanvasView();
         applyCurrentSkinToPreviews();
