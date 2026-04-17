@@ -525,9 +525,17 @@ function setSkinEditMode(mode) {
   skinEditor3dEl.classList.toggle("hidden", skinEditMode !== "3d");
   skinPreview3dEl.classList.toggle("hidden", skinEditMode !== "2d");
   skinPreview2dEl.classList.toggle("hidden", skinEditMode !== "3d");
+  editMode2dEl.classList.toggle("active-toggle", skinEditMode === "2d");
+  editMode3dEl.classList.toggle("active-toggle", skinEditMode === "3d");
   if (skinEditMode === "3d" && typeof skinEditorPreviewResizeFn === "function") {
     skinEditorPreviewResizeFn();
   }
+}
+
+function setSkinPaintLayer(layer) {
+  skinPaintLayer = layer === "overlay" ? "overlay" : "base";
+  paintLayerBaseEl.classList.toggle("active-toggle", skinPaintLayer === "base");
+  paintLayerOverlayEl.classList.toggle("active-toggle", skinPaintLayer === "overlay");
 }
 
 function getBlockColorById(id) {
@@ -2950,6 +2958,19 @@ function initSkinEditorPreview() {
     if (!getPartEnabledForPixel(tx, ty)) return;
     if (!canPaintByLayer(tx, ty) && skinTool !== "picker") return;
 
+    const isOverlayMesh = [
+      skinEditorPreviewAvatar.headOverlayMesh,
+      skinEditorPreviewAvatar.bodyOverlayMesh,
+      skinEditorPreviewAvatar.leftArmOverlayMesh,
+      skinEditorPreviewAvatar.rightArmOverlayMesh,
+      skinEditorPreviewAvatar.leftLegOverlayMesh,
+      skinEditorPreviewAvatar.rightLegOverlayMesh,
+    ].includes(hit.object);
+    if (skinTool !== "picker") {
+      if (skinPaintLayer === "overlay" && !isOverlayMesh) return;
+      if (skinPaintLayer === "base" && isOverlayMesh) return;
+    }
+
     if (!skinSnapshotCaptured) {
       pushUndoSnapshot();
       skinRedoStack = [];
@@ -2976,8 +2997,12 @@ function initSkinEditorPreview() {
     if (!skinOrbiting) return;
     evt.preventDefault();
     skinEditorOrbitYaw -= evt.movementX * 0.008;
-    skinEditorOrbitPitch = Math.max(-0.7, Math.min(0.7, skinEditorOrbitPitch - evt.movementY * 0.006));
+    skinEditorOrbitPitch += evt.movementY * 0.006;
   });
+  skinEditor3dEl.addEventListener("wheel", (evt) => {
+    evt.preventDefault();
+    skinEditorOrbitDistance = Math.max(0.7, skinEditorOrbitDistance + evt.deltaY * 0.0035);
+  }, { passive: false });
   window.addEventListener("mouseup", () => { skinOrbiting = false; });
 }
 
@@ -3038,14 +3063,21 @@ function initSkinEditorUi() {
     skinPaletteEl.append(sw);
   }
 
-  toolBrushEl.addEventListener("click", () => { skinTool = "brush"; });
-  toolEraserEl.addEventListener("click", () => { skinTool = "eraser"; });
-  toolPickerEl.addEventListener("click", () => { skinTool = "picker"; });
-  toolHandEl.addEventListener("click", () => { skinTool = "hand"; });
+  const setTool = (tool) => {
+    skinTool = tool;
+    toolBrushEl.classList.toggle("active-toggle", skinTool === "brush");
+    toolEraserEl.classList.toggle("active-toggle", skinTool === "eraser");
+    toolPickerEl.classList.toggle("active-toggle", skinTool === "picker");
+    toolHandEl.classList.toggle("active-toggle", skinTool === "hand");
+  };
+  toolBrushEl.addEventListener("click", () => { setTool("brush"); });
+  toolEraserEl.addEventListener("click", () => { setTool("eraser"); });
+  toolPickerEl.addEventListener("click", () => { setTool("picker"); });
+  toolHandEl.addEventListener("click", () => { setTool("hand"); });
   editMode2dEl.addEventListener("click", () => setSkinEditMode("2d"));
   editMode3dEl.addEventListener("click", () => setSkinEditMode("3d"));
-  paintLayerBaseEl.addEventListener("click", () => { skinPaintLayer = "base"; });
-  paintLayerOverlayEl.addEventListener("click", () => { skinPaintLayer = "overlay"; });
+  paintLayerBaseEl.addEventListener("click", () => { setSkinPaintLayer("base"); });
+  paintLayerOverlayEl.addEventListener("click", () => { setSkinPaintLayer("overlay"); });
   toolSizeEl.addEventListener("change", () => {
     skinBrushSize = Math.max(1, Math.min(16, Number(toolSizeEl.value) || 1));
   });
@@ -3104,7 +3136,7 @@ function initSkinEditorUi() {
       const movementX = evt.movementX ?? 0;
       const movementY = evt.movementY ?? 0;
       skinEditorOrbitYaw -= movementX * 0.008;
-      skinEditorOrbitPitch = Math.max(-0.7, Math.min(0.7, skinEditorOrbitPitch - movementY * 0.006));
+      skinEditorOrbitPitch += movementY * 0.006;
       return;
     }
     if (!skinDrawing || skinTool === "picker") return;
@@ -3202,6 +3234,8 @@ function initSkinEditorUi() {
   partLeftArmEl.addEventListener("change", applyPartVisibility);
   partRightLegEl.addEventListener("change", applyPartVisibility);
   partLeftLegEl.addEventListener("change", applyPartVisibility);
+  setTool("brush");
+  setSkinPaintLayer("base");
   setSkinEditMode("2d");
   applyPartVisibility();
 }
