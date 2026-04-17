@@ -200,6 +200,7 @@ let skinEditorOrbitDistance = 2.8;
 let skinEditorNavMode = null;
 const skinEditorOrbitTarget = new THREE.Vector3(0, 1.1, 0);
 let skinEditorPreviewResizeFn = null;
+let skinPreviewPanelResizeFn = null;
 
 const SKIN_PALETTE = [
   "#000000", "#ffffff", "#c68642", "#8f5d2b", "#2e6fb7", "#1f4f8b",
@@ -511,6 +512,7 @@ function drawOnSkinAt(x, y) {
 }
 
 function canPaintByLayer(x, y) {
+  if (skinEditMode === "2d") return true;
   const inOverlay = isOverlayPixel(x, y);
   if (skinPaintLayer === "base" && inOverlay) return false;
   if (skinPaintLayer === "overlay" && !inOverlay) return false;
@@ -564,10 +566,15 @@ function setSkinEditMode(mode) {
   skinEditor3dEl.classList.toggle("hidden", skinEditMode !== "3d");
   skinPreview3dEl.classList.toggle("hidden", skinEditMode !== "2d");
   skinPreview2dEl.classList.toggle("hidden", skinEditMode !== "3d");
+  paintLayerBaseEl.classList.toggle("hidden", skinEditMode === "2d");
+  paintLayerOverlayEl.classList.toggle("hidden", skinEditMode === "2d");
   editMode2dEl.classList.toggle("active-toggle", skinEditMode === "2d");
   editMode3dEl.classList.toggle("active-toggle", skinEditMode === "3d");
   if (skinEditMode === "3d" && typeof skinEditorPreviewResizeFn === "function") {
     skinEditorPreviewResizeFn();
+  }
+  if (skinEditMode === "2d" && typeof skinPreviewPanelResizeFn === "function") {
+    skinPreviewPanelResizeFn();
   }
 }
 
@@ -3053,15 +3060,16 @@ function initSkinEditorPreview() {
       if (skinPaintLayer === "base" && isOverlayMesh) return;
     }
 
-    if (!skinSnapshotCaptured) {
-      pushUndoSnapshot();
-      skinRedoStack = [];
-      skinSnapshotCaptured = true;
-    }
     if (skinTool === "picker") {
       pickSkinColorAt(tx, ty);
       skinSnapshotCaptured = false;
       return;
+    }
+
+    if (!skinSnapshotCaptured) {
+      pushUndoSnapshot();
+      skinRedoStack = [];
+      skinSnapshotCaptured = true;
     }
     if (skinTool === "eraser") {
       drawOnSkinAt(tx, ty);
@@ -3128,6 +3136,7 @@ function initSkinPreviewPanel3d() {
     skinPreviewPanelCamera.aspect = w / h;
     skinPreviewPanelCamera.updateProjectionMatrix();
   };
+  skinPreviewPanelResizeFn = resize;
   resize();
   window.addEventListener("resize", resize);
 }
@@ -3430,9 +3439,9 @@ function animateMenu(now) {
   if (!gameStarted) {
     updateMenuPanorama(dt);
     updateMenuSkin3d(dt);
-    updateSkinEditorPreview(dt);
-    updateSkinPreviewPanel3d(dt);
   }
+  updateSkinEditorPreview(dt);
+  updateSkinPreviewPanel3d(dt);
   updatePauseSkin3d(dt);
   requestAnimationFrame(animateMenu);
 }
