@@ -193,6 +193,8 @@ let skinEditor3dAvatar = null;
 let skinEditorOrbitYaw = 0;
 let skinEditorOrbitPitch = 0;
 let skinEditorOrbitDistance = 2.8;
+let skinEditorNavMode = null;
+const skinEditorOrbitTarget = new THREE.Vector3(0, 1.1, 0);
 let skinEditorPreviewResizeFn = null;
 
 const SKIN_PALETTE = [
@@ -475,6 +477,12 @@ function getEditorPixelFromEvent(evt) {
   };
 }
 
+function pickSkinColorAt(x, y) {
+  const data = skinSourceCtx.getImageData(x, y, 1, 1).data;
+  skinColorEl.value = `#${[data[0], data[1], data[2]].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+  if (skinActiveColorEl) skinActiveColorEl.style.background = skinColorEl.value;
+}
+
 function drawOnSkinAt(x, y) {
   const size = Math.max(1, Math.floor(skinBrushSize));
   const startX = x - Math.floor((size - 1) / 2);
@@ -533,6 +541,8 @@ function setEditorOpen(open) {
     skinSavedSnapshot = cloneSkinSnapshot();
     skinEditorOrbitYaw = 0;
     skinEditorOrbitPitch = 0;
+    skinEditorOrbitDistance = 2.8;
+    skinEditorOrbitTarget.set(0, 1.1, 0);
     if (skinEditMode === "3d" && typeof skinEditorPreviewResizeFn === "function") {
       skinEditorPreviewResizeFn();
     }
@@ -1146,7 +1156,10 @@ function buildSkinFaceTexture(skinCanvas, x, y, w, h, flipX = false) {
   const tex = new THREE.CanvasTexture(c);
   tex.magFilter = THREE.NearestFilter;
   tex.minFilter = THREE.NearestFilter;
+  tex.generateMipmaps = false;
   tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.ClampToEdgeWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
   return tex;
 }
 
@@ -1332,7 +1345,7 @@ function createSteveAvatar(options = {}) {
   const LIMB_W = 4 * PX;
   const LIMB_H = 12 * PX;
   const LIMB_D = 4 * PX;
-  const OVERLAY_GROW = 0.024;
+  const OVERLAY_GROW = PX * 0.5;
 
   const bodyMesh = new THREE.Mesh(
     new THREE.BoxGeometry(BODY_W, BODY_H, BODY_D),
@@ -2917,10 +2930,17 @@ function initSkinEditorPreview() {
   skinEditor3dEl.addEventListener("mousedown", (evt) => {
     if (!skinEditorOpen || skinEditMode !== "3d") return;
     const useHand = skinTool === "hand" || skinSpaceHeld;
-    if (useHand) {
+    if (evt.button === 1) {
+      skinEditorNavMode = "pan";
       skinOrbiting = true;
       return;
     }
+    if (evt.button === 2 || useHand) {
+      skinEditorNavMode = "orbit";
+      skinOrbiting = true;
+      return;
+    }
+    if (evt.button !== 0) return;
     const isMeshPaintEnabled = (obj) => {
       if (obj === skinEditorPreviewAvatar.headMesh || obj === skinEditorPreviewAvatar.headOverlayMesh) return partHeadEl.checked;
       if (obj === skinEditorPreviewAvatar.bodyMesh || obj === skinEditorPreviewAvatar.bodyOverlayMesh) return partBodyEl.checked;
@@ -3024,8 +3044,7 @@ function initSkinEditorPreview() {
       skinSnapshotCaptured = true;
     }
     if (skinTool === "picker") {
-      const data = skinSourceCtx.getImageData(tx, ty, 1, 1).data;
-      skinColorEl.value = `#${[data[0], data[1], data[2]].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+      pickSkinColorAt(tx, ty);
       skinSnapshotCaptured = false;
       return;
     }
@@ -3042,14 +3061,26 @@ function initSkinEditorPreview() {
   skinEditor3dEl.addEventListener("mousemove", (evt) => {
     if (!skinOrbiting) return;
     evt.preventDefault();
-    skinEditorOrbitYaw -= evt.movementX * 0.008;
-    skinEditorOrbitPitch += evt.movementY * 0.006;
+    if (skinEditorNavMode === "pan") {
+      const panScale = skinEditorOrbitDistance * 0.0028;
+      const right = new THREE.Vector3(1, 0, 0).applyQuaternion(skinEditorPreviewCamera.quaternion);
+      const up = new THREE.Vector3(0, 1, 0).applyQuaternion(skinEditorPreviewCamera.quaternion);
+      skinEditorOrbitTarget.add(right.multiplyScalar(-evt.movementX * panScale));
+      skinEditorOrbitTarget.add(up.multiplyScalar(evt.movementY * panScale));
+    } else {
+      skinEditorOrbitYaw -= evt.movementX * 0.008;
+      skinEditorOrbitPitch += evt.movementY * 0.006;
+    }
   });
   skinEditor3dEl.addEventListener("wheel", (evt) => {
     evt.preventDefault();
-    skinEditorOrbitDistance = Math.max(0.7, skinEditorOrbitDistance + evt.deltaY * 0.0035);
+    skinEditorOrbitDistance = Math.max(0.7, Math.min(7.5, skinEditorOrbitDistance + evt.deltaY * 0.0035));
   }, { passive: false });
-  window.addEventListener("mouseup", () => { skinOrbiting = false; });
+  skinEditor3dEl.addEventListener("contextmenu", (evt) => evt.preventDefault());
+  window.addEventListener("mouseup", () => {
+    skinOrbiting = false;
+    skinEditorNavMode = null;
+  });
 }
 
 function updateSkinEditorPreview(dt) {
@@ -3057,11 +3088,11 @@ function updateSkinEditorPreview(dt) {
   if (!skinEditorOpen) return;
   const cp = Math.cos(skinEditorOrbitPitch);
   skinEditorPreviewCamera.position.set(
-    Math.sin(skinEditorOrbitYaw) * skinEditorOrbitDistance * cp,
-    1.3 + Math.sin(skinEditorOrbitPitch) * skinEditorOrbitDistance,
-    Math.cos(skinEditorOrbitYaw) * skinEditorOrbitDistance * cp,
+    skinEditorOrbitTarget.x + Math.sin(skinEditorOrbitYaw) * skinEditorOrbitDistance * cp,
+    skinEditorOrbitTarget.y + Math.sin(skinEditorOrbitPitch) * skinEditorOrbitDistance,
+    skinEditorOrbitTarget.z + Math.cos(skinEditorOrbitYaw) * skinEditorOrbitDistance * cp,
   );
-  skinEditorPreviewCamera.lookAt(0, 1.1, 0);
+  skinEditorPreviewCamera.lookAt(skinEditorOrbitTarget);
   // no auto-rotation in 3D edit mode
   skinEditorPreviewAvatar.leftArmPivot.rotation.x = 0;
   skinEditorPreviewAvatar.rightArmPivot.rotation.x = 0;
@@ -3170,8 +3201,7 @@ function initSkinEditorUi() {
     skinDrawing = true;
     const p = getEditorPixelFromEvent(point);
     if (skinTool === "picker") {
-      const data = skinSourceCtx.getImageData(p.x, p.y, 1, 1).data;
-      skinColorEl.value = `#${[data[0], data[1], data[2]].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+      pickSkinColorAt(p.x, p.y);
       skinSnapshotCaptured = false;
       return;
     }
