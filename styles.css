@@ -701,6 +701,12 @@ body {
   background: linear-gradient(#6f7fbc, #4f5c96);
 }
 
+.skin-editor-3d canvas {
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
+}
+
 .skin-editor-tools-row {
   display: flex;
   flex-wrap: wrap;

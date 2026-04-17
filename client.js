@@ -189,6 +189,7 @@ let skinEditor3dAvatar = null;
 let skinEditorOrbitYaw = 0;
 let skinEditorOrbitPitch = 0;
 let skinEditorOrbitDistance = 2.8;
+let skinEditorPreviewResizeFn = null;
 
 const SKIN_PALETTE = [
   "#000000", "#ffffff", "#c68642", "#8f5d2b", "#2e6fb7", "#1f4f8b",
@@ -512,6 +513,9 @@ function setEditorOpen(open) {
     renderSkinPreview2d();
     skinEditorOrbitYaw = 0;
     skinEditorOrbitPitch = 0;
+    if (skinEditMode === "3d" && typeof skinEditorPreviewResizeFn === "function") {
+      skinEditorPreviewResizeFn();
+    }
   }
 }
 
@@ -521,6 +525,9 @@ function setSkinEditMode(mode) {
   skinEditor3dEl.classList.toggle("hidden", skinEditMode !== "3d");
   skinPreview3dEl.classList.toggle("hidden", skinEditMode !== "2d");
   skinPreview2dEl.classList.toggle("hidden", skinEditMode !== "3d");
+  if (skinEditMode === "3d" && typeof skinEditorPreviewResizeFn === "function") {
+    skinEditorPreviewResizeFn();
+  }
 }
 
 function getBlockColorById(id) {
@@ -2865,6 +2872,7 @@ function initSkinEditorPreview() {
     skinEditorPreviewCamera.aspect = w / h;
     skinEditorPreviewCamera.updateProjectionMatrix();
   }
+  skinEditorPreviewResizeFn = resizePreview;
   resizePreview();
   window.addEventListener("resize", resizePreview);
 
