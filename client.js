@@ -932,71 +932,81 @@ function buildSkinFaceTexture(skinCanvas, x, y, w, h, flipX = false) {
 }
 
 function buildSkinMaterialSet(skinCanvas, part, side = "right", overlay = false) {
+  const f = (x, y, w, h, flipX = false) => ({ x, y, w, h, flipX });
   let faces;
+
   if (part === "head" && !overlay) {
     faces = {
-      right: [0, 8, 8, 8],
-      left: [16, 8, 8, 8],
-      top: [8, 0, 8, 8],
-      bottom: [16, 0, 8, 8],
-      front: [8, 8, 8, 8],
-      back: [24, 8, 8, 8],
+      right: f(16, 8, 8, 8),
+      left: f(0, 8, 8, 8),
+      top: f(8, 0, 8, 8),
+      bottom: f(16, 0, 8, 8, true),
+      front: f(8, 8, 8, 8),
+      back: f(24, 8, 8, 8, true),
     };
   } else if (part === "head" && overlay) {
     faces = {
-      right: [32, 8, 8, 8],
-      left: [48, 8, 8, 8],
-      top: [40, 0, 8, 8],
-      bottom: [48, 0, 8, 8],
-      front: [40, 8, 8, 8],
-      back: [56, 8, 8, 8],
+      right: f(48, 8, 8, 8),
+      left: f(32, 8, 8, 8),
+      top: f(40, 0, 8, 8),
+      bottom: f(48, 0, 8, 8, true),
+      front: f(40, 8, 8, 8),
+      back: f(56, 8, 8, 8, true),
     };
   } else if (part === "body" && !overlay) {
     faces = {
-      right: [16, 20, 4, 12],
-      left: [28, 20, 4, 12],
-      top: [20, 16, 8, 4],
-      bottom: [28, 16, 8, 4],
-      front: [20, 20, 8, 12],
-      back: [32, 20, 8, 12],
+      right: f(28, 20, 4, 12),
+      left: f(16, 20, 4, 12),
+      top: f(20, 16, 8, 4),
+      bottom: f(28, 16, 8, 4, true),
+      front: f(20, 20, 8, 12),
+      back: f(32, 20, 8, 12, true),
     };
   } else if (part === "body" && overlay) {
     faces = {
-      right: [16, 36, 4, 12],
-      left: [28, 36, 4, 12],
-      top: [20, 32, 8, 4],
-      bottom: [28, 32, 8, 4],
-      front: [20, 36, 8, 12],
-      back: [32, 36, 8, 12],
+      right: f(28, 36, 4, 12),
+      left: f(16, 36, 4, 12),
+      top: f(20, 32, 8, 4),
+      bottom: f(28, 32, 8, 4, true),
+      front: f(20, 36, 8, 12),
+      back: f(32, 36, 8, 12, true),
     };
   } else if (part === "arm") {
-    const baseX = side === "left" ? 32 : 40;
-    const baseY = overlay ? 48 : 16;
+    const baseX = overlay
+      ? (side === "left" ? 48 : 40)
+      : (side === "left" ? 32 : 40);
+    const baseY = overlay
+      ? (side === "left" ? 48 : 32)
+      : (side === "left" ? 48 : 16);
     faces = {
-      right: [baseX, baseY + 4, 4, 12],
-      left: [baseX + 8, baseY + 4, 4, 12],
-      top: [baseX + 4, baseY, 4, 4],
-      bottom: [baseX + 8, baseY, 4, 4],
-      front: [baseX + 4, baseY + 4, 4, 12],
-      back: [baseX + 12, baseY + 4, 4, 12],
+      right: f(baseX + 8, baseY + 4, 4, 12),
+      left: f(baseX, baseY + 4, 4, 12),
+      top: f(baseX + 4, baseY, 4, 4),
+      bottom: f(baseX + 8, baseY, 4, 4, true),
+      front: f(baseX + 4, baseY + 4, 4, 12),
+      back: f(baseX + 12, baseY + 4, 4, 12, true),
     };
   } else {
-    const baseX = side === "left" ? 16 : 0;
-    const baseY = overlay ? 48 : 16;
+    const baseX = overlay ? 0 : (side === "left" ? 16 : 0);
+    const baseY = overlay ? (side === "left" ? 48 : 32) : (side === "left" ? 48 : 16);
     faces = {
-      right: [baseX, baseY + 4, 4, 12],
-      left: [baseX + 8, baseY + 4, 4, 12],
-      top: [baseX + 4, baseY, 4, 4],
-      bottom: [baseX + 8, baseY, 4, 4],
-      front: [baseX + 4, baseY + 4, 4, 12],
-      back: [baseX + 12, baseY + 4, 4, 12],
+      right: f(baseX + 8, baseY + 4, 4, 12),
+      left: f(baseX, baseY + 4, 4, 12),
+      top: f(baseX + 4, baseY, 4, 4),
+      bottom: f(baseX + 8, baseY, 4, 4, true),
+      front: f(baseX + 4, baseY + 4, 4, 12),
+      back: f(baseX + 12, baseY + 4, 4, 12, true),
     };
   }
 
   const mk = (face) => {
-    const [x, y, w, h] = faces[face];
-    return new THREE.MeshLambertMaterial({ map: buildSkinFaceTexture(skinCanvas, x, y, w, h), transparent: true });
+    const info = faces[face];
+    return new THREE.MeshLambertMaterial({
+      map: buildSkinFaceTexture(skinCanvas, info.x, info.y, info.w, info.h, info.flipX),
+      transparent: true,
+    });
   };
+
   return [mk("right"), mk("left"), mk("top"), mk("bottom"), mk("front"), mk("back")];
 }
 
@@ -1052,6 +1062,7 @@ function createSteveAvatar(options = {}) {
     buildSkinMaterialSet(skinCanvas, "body", "right", true)
   );
   bodyOverlayMesh.position.set(0, 1.08, 0);
+  bodyOverlayMesh.renderOrder = 2;
   root.add(bodyOverlayMesh);
 
   const headPivot = new THREE.Group();
@@ -1067,6 +1078,7 @@ function createSteveAvatar(options = {}) {
     buildSkinMaterialSet(skinCanvas, "head", "right", true)
   );
   headOverlayMesh.position.set(0, 0.24, 0);
+  headOverlayMesh.renderOrder = 2;
   headPivot.add(headOverlayMesh);
   root.add(headPivot);
 
@@ -1083,6 +1095,7 @@ function createSteveAvatar(options = {}) {
     buildSkinMaterialSet(skinCanvas, "arm", "left", true)
   );
   leftArmOverlayMesh.position.set(0, -0.36, 0);
+  leftArmOverlayMesh.renderOrder = 2;
   leftArmPivot.add(leftArmOverlayMesh);
   root.add(leftArmPivot);
 
@@ -1099,6 +1112,7 @@ function createSteveAvatar(options = {}) {
     buildSkinMaterialSet(skinCanvas, "arm", "right", true)
   );
   rightArmOverlayMesh.position.set(0, -0.36, 0);
+  rightArmOverlayMesh.renderOrder = 2;
   rightArmPivot.add(rightArmOverlayMesh);
   root.add(rightArmPivot);
 
@@ -1115,6 +1129,7 @@ function createSteveAvatar(options = {}) {
     buildSkinMaterialSet(skinCanvas, "leg", "left", true)
   );
   leftLegOverlayMesh.position.set(0, -0.375, 0);
+  leftLegOverlayMesh.renderOrder = 2;
   leftLegPivot.add(leftLegOverlayMesh);
   root.add(leftLegPivot);
 
@@ -1131,6 +1146,7 @@ function createSteveAvatar(options = {}) {
     buildSkinMaterialSet(skinCanvas, "leg", "right", true)
   );
   rightLegOverlayMesh.position.set(0, -0.375, 0);
+  rightLegOverlayMesh.renderOrder = 2;
   rightLegPivot.add(rightLegOverlayMesh);
   root.add(rightLegPivot);
 
@@ -2320,7 +2336,7 @@ function updateRemotePlayersAnimation(dt) {
   for (const [, rp] of remotePlayers) {
     rp.root.position.lerp(new THREE.Vector3(rp.targetPos.x, rp.targetPos.y, rp.targetPos.z), Math.min(1, dt * 18));
     rp.root.rotation.y = rp.yaw + Math.PI;
-    rp.headPivot.rotation.x = Math.max(-0.45, Math.min(0.45, rp.pitch * 0.5));
+    rp.headPivot.rotation.x = Math.max(-0.45, Math.min(0.45, -rp.pitch * 0.5));
 
     const speedFactor = rp.moveIntensity;
     rp.phase += dt * (3 + speedFactor * 9);
