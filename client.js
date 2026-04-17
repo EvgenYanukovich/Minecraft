@@ -488,7 +488,11 @@ function pickSkinColorAt(x, y) {
   const py = Math.max(0, Math.min(skinSourceSize - 1, Math.floor(y)));
   const data = skinSourceCtx.getImageData(px, py, 1, 1).data;
   const alpha = data[3] / 255;
-  if (alpha <= 0.001) return;
+  if (alpha <= 0.001) {
+    skinColorEl.value = "#000000";
+    if (skinActiveColorEl) skinActiveColorEl.style.background = skinColorEl.value;
+    return;
+  }
   skinColorEl.value = `#${[data[0], data[1], data[2]].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
   if (skinActiveColorEl) skinActiveColorEl.style.background = skinColorEl.value;
 }
@@ -3040,11 +3044,9 @@ function initSkinEditorPreview() {
     ].includes(obj);
 
     let hit = hits[0];
-    if (effectiveTool !== "picker") {
-      const wantOverlay = skinPaintLayer === "overlay";
-      const matched = hits.find((h) => isOverlayObject(h.object) === wantOverlay);
-      if (matched) hit = matched;
-    }
+    const wantOverlay = skinPaintLayer === "overlay";
+    const matched = hits.find((h) => isOverlayObject(h.object) === wantOverlay);
+    if (matched) hit = matched;
     const uv = hit.uv;
     const materialIndex = hit.face?.materialIndex ?? 0;
     const partName = hit.object === skinEditorPreviewAvatar.headMesh || hit.object === skinEditorPreviewAvatar.headOverlayMesh ? "head" :
@@ -3083,17 +3085,15 @@ function initSkinEditorPreview() {
 
     const faceRect = resolveFaceRect();
     const px = Math.max(0, Math.min(faceRect.w - 1, Math.floor(uv.x * faceRect.w)));
-    const py = Math.max(0, Math.min(faceRect.h - 1, Math.floor(uv.y * faceRect.h)));
+    const py = Math.max(0, Math.min(faceRect.h - 1, Math.floor((1 - uv.y) * faceRect.h)));
     const tx = faceRect.x + px;
     const ty = faceRect.y + py;
     if (!isMeshPaintEnabled(hit.object)) return;
-    if (!canPaintByLayer(tx, ty) && effectiveTool !== "picker") return;
+    if (!canPaintByLayer(tx, ty)) return;
 
     const isOverlayMesh = isOverlayObject(hit.object);
-    if (effectiveTool !== "picker") {
-      if (skinPaintLayer === "overlay" && !isOverlayMesh) return;
-      if (skinPaintLayer === "base" && isOverlayMesh) return;
-    }
+    if (skinPaintLayer === "overlay" && !isOverlayMesh) return;
+    if (skinPaintLayer === "base" && isOverlayMesh) return;
 
     if (effectiveTool === "picker") {
       pickSkinColorAt(tx, ty);
