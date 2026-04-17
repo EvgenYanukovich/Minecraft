@@ -163,27 +163,45 @@ const SKIN_PART_REGIONS = {
     { x: 8, y: 0, w: 8, h: 8 }, { x: 16, y: 0, w: 8, h: 8 },
     { x: 0, y: 8, w: 8, h: 8 }, { x: 8, y: 8, w: 8, h: 8 },
     { x: 16, y: 8, w: 8, h: 8 }, { x: 24, y: 8, w: 8, h: 8 },
+    { x: 40, y: 0, w: 8, h: 8 }, { x: 48, y: 0, w: 8, h: 8 },
+    { x: 32, y: 8, w: 8, h: 8 }, { x: 40, y: 8, w: 8, h: 8 },
+    { x: 48, y: 8, w: 8, h: 8 }, { x: 56, y: 8, w: 8, h: 8 },
   ],
   body: [
     { x: 20, y: 16, w: 8, h: 4 }, { x: 28, y: 16, w: 8, h: 4 },
     { x: 16, y: 20, w: 4, h: 12 }, { x: 20, y: 20, w: 8, h: 12 },
     { x: 28, y: 20, w: 4, h: 12 }, { x: 32, y: 20, w: 8, h: 12 },
+    { x: 20, y: 32, w: 8, h: 4 }, { x: 28, y: 32, w: 8, h: 4 },
+    { x: 16, y: 36, w: 4, h: 12 }, { x: 20, y: 36, w: 8, h: 12 },
+    { x: 28, y: 36, w: 4, h: 12 }, { x: 32, y: 36, w: 8, h: 12 },
   ],
   arms: [
     { x: 44, y: 16, w: 4, h: 4 }, { x: 48, y: 16, w: 4, h: 4 },
     { x: 40, y: 20, w: 4, h: 12 }, { x: 44, y: 20, w: 4, h: 12 },
     { x: 48, y: 20, w: 4, h: 12 }, { x: 52, y: 20, w: 4, h: 12 },
+    { x: 44, y: 32, w: 4, h: 4 }, { x: 48, y: 32, w: 4, h: 4 },
+    { x: 40, y: 36, w: 4, h: 12 }, { x: 44, y: 36, w: 4, h: 12 },
+    { x: 48, y: 36, w: 4, h: 12 }, { x: 52, y: 36, w: 4, h: 12 },
     { x: 36, y: 48, w: 4, h: 4 }, { x: 40, y: 48, w: 4, h: 4 },
     { x: 32, y: 52, w: 4, h: 12 }, { x: 36, y: 52, w: 4, h: 12 },
     { x: 40, y: 52, w: 4, h: 12 }, { x: 44, y: 52, w: 4, h: 12 },
+    { x: 52, y: 48, w: 4, h: 4 }, { x: 56, y: 48, w: 4, h: 4 },
+    { x: 48, y: 52, w: 4, h: 12 }, { x: 52, y: 52, w: 4, h: 12 },
+    { x: 56, y: 52, w: 4, h: 12 }, { x: 60, y: 52, w: 4, h: 12 },
   ],
   legs: [
     { x: 4, y: 16, w: 4, h: 4 }, { x: 8, y: 16, w: 4, h: 4 },
     { x: 0, y: 20, w: 4, h: 12 }, { x: 4, y: 20, w: 4, h: 12 },
     { x: 8, y: 20, w: 4, h: 12 }, { x: 12, y: 20, w: 4, h: 12 },
+    { x: 4, y: 32, w: 4, h: 4 }, { x: 8, y: 32, w: 4, h: 4 },
+    { x: 0, y: 36, w: 4, h: 12 }, { x: 4, y: 36, w: 4, h: 12 },
+    { x: 8, y: 36, w: 4, h: 12 }, { x: 12, y: 36, w: 4, h: 12 },
     { x: 20, y: 48, w: 4, h: 4 }, { x: 24, y: 48, w: 4, h: 4 },
     { x: 16, y: 52, w: 4, h: 12 }, { x: 20, y: 52, w: 4, h: 12 },
     { x: 24, y: 52, w: 4, h: 12 }, { x: 28, y: 52, w: 4, h: 12 },
+    { x: 4, y: 48, w: 4, h: 4 }, { x: 8, y: 48, w: 4, h: 4 },
+    { x: 0, y: 52, w: 4, h: 12 }, { x: 4, y: 52, w: 4, h: 12 },
+    { x: 8, y: 52, w: 4, h: 12 }, { x: 12, y: 52, w: 4, h: 12 },
   ],
 };
 
@@ -913,9 +931,9 @@ function buildSkinFaceTexture(skinCanvas, x, y, w, h, flipX = false) {
   return tex;
 }
 
-function buildSkinMaterialSet(skinCanvas, part, side = "right") {
+function buildSkinMaterialSet(skinCanvas, part, side = "right", overlay = false) {
   let faces;
-  if (part === "head") {
+  if (part === "head" && !overlay) {
     faces = {
       right: [0, 8, 8, 8],
       left: [16, 8, 8, 8],
@@ -924,7 +942,16 @@ function buildSkinMaterialSet(skinCanvas, part, side = "right") {
       front: [8, 8, 8, 8],
       back: [24, 8, 8, 8],
     };
-  } else if (part === "body") {
+  } else if (part === "head" && overlay) {
+    faces = {
+      right: [32, 8, 8, 8],
+      left: [48, 8, 8, 8],
+      top: [40, 0, 8, 8],
+      bottom: [48, 0, 8, 8],
+      front: [40, 8, 8, 8],
+      back: [56, 8, 8, 8],
+    };
+  } else if (part === "body" && !overlay) {
     faces = {
       right: [16, 20, 4, 12],
       left: [28, 20, 4, 12],
@@ -933,25 +960,36 @@ function buildSkinMaterialSet(skinCanvas, part, side = "right") {
       front: [20, 20, 8, 12],
       back: [32, 20, 8, 12],
     };
+  } else if (part === "body" && overlay) {
+    faces = {
+      right: [16, 36, 4, 12],
+      left: [28, 36, 4, 12],
+      top: [20, 32, 8, 4],
+      bottom: [28, 32, 8, 4],
+      front: [20, 36, 8, 12],
+      back: [32, 36, 8, 12],
+    };
   } else if (part === "arm") {
     const baseX = side === "left" ? 32 : 40;
+    const baseY = overlay ? 48 : 16;
     faces = {
-      right: [baseX, 20, 4, 12],
-      left: [baseX + 8, 20, 4, 12],
-      top: [baseX + 4, 16, 4, 4],
-      bottom: [baseX + 8, 16, 4, 4],
-      front: [baseX + 4, 20, 4, 12],
-      back: [baseX + 12, 20, 4, 12],
+      right: [baseX, baseY + 4, 4, 12],
+      left: [baseX + 8, baseY + 4, 4, 12],
+      top: [baseX + 4, baseY, 4, 4],
+      bottom: [baseX + 8, baseY, 4, 4],
+      front: [baseX + 4, baseY + 4, 4, 12],
+      back: [baseX + 12, baseY + 4, 4, 12],
     };
   } else {
     const baseX = side === "left" ? 16 : 0;
+    const baseY = overlay ? 48 : 16;
     faces = {
-      right: [baseX, 20, 4, 12],
-      left: [baseX + 8, 20, 4, 12],
-      top: [baseX + 4, 16, 4, 4],
-      bottom: [baseX + 8, 16, 4, 4],
-      front: [baseX + 4, 20, 4, 12],
-      back: [baseX + 12, 20, 4, 12],
+      right: [baseX, baseY + 4, 4, 12],
+      left: [baseX + 8, baseY + 4, 4, 12],
+      top: [baseX + 4, baseY, 4, 4],
+      bottom: [baseX + 8, baseY, 4, 4],
+      front: [baseX + 4, baseY + 4, 4, 12],
+      back: [baseX + 12, baseY + 4, 4, 12],
     };
   }
 
@@ -978,6 +1016,12 @@ function applySkinToAvatar(avatar, skinCanvas) {
   if (avatar.rightArmMesh?.material) disposeSkinMaterials(avatar.rightArmMesh.material);
   if (avatar.leftLegMesh?.material) disposeSkinMaterials(avatar.leftLegMesh.material);
   if (avatar.rightLegMesh?.material) disposeSkinMaterials(avatar.rightLegMesh.material);
+  if (avatar.headOverlayMesh?.material) disposeSkinMaterials(avatar.headOverlayMesh.material);
+  if (avatar.bodyOverlayMesh?.material) disposeSkinMaterials(avatar.bodyOverlayMesh.material);
+  if (avatar.leftArmOverlayMesh?.material) disposeSkinMaterials(avatar.leftArmOverlayMesh.material);
+  if (avatar.rightArmOverlayMesh?.material) disposeSkinMaterials(avatar.rightArmOverlayMesh.material);
+  if (avatar.leftLegOverlayMesh?.material) disposeSkinMaterials(avatar.leftLegOverlayMesh.material);
+  if (avatar.rightLegOverlayMesh?.material) disposeSkinMaterials(avatar.rightLegOverlayMesh.material);
 
   avatar.bodyMesh.material = buildSkinMaterialSet(skinCanvas, "body");
   avatar.headMesh.material = buildSkinMaterialSet(skinCanvas, "head");
@@ -985,6 +1029,12 @@ function applySkinToAvatar(avatar, skinCanvas) {
   avatar.rightArmMesh.material = buildSkinMaterialSet(skinCanvas, "arm", "right");
   avatar.leftLegMesh.material = buildSkinMaterialSet(skinCanvas, "leg", "left");
   avatar.rightLegMesh.material = buildSkinMaterialSet(skinCanvas, "leg", "right");
+  avatar.headOverlayMesh.material = buildSkinMaterialSet(skinCanvas, "head", "right", true);
+  avatar.bodyOverlayMesh.material = buildSkinMaterialSet(skinCanvas, "body", "right", true);
+  avatar.leftArmOverlayMesh.material = buildSkinMaterialSet(skinCanvas, "arm", "left", true);
+  avatar.rightArmOverlayMesh.material = buildSkinMaterialSet(skinCanvas, "arm", "right", true);
+  avatar.leftLegOverlayMesh.material = buildSkinMaterialSet(skinCanvas, "leg", "left", true);
+  avatar.rightLegOverlayMesh.material = buildSkinMaterialSet(skinCanvas, "leg", "right", true);
 }
 
 function createSteveAvatar(options = {}) {
@@ -997,6 +1047,12 @@ function createSteveAvatar(options = {}) {
   );
   bodyMesh.position.set(0, 1.08, 0);
   root.add(bodyMesh);
+  const bodyOverlayMesh = new THREE.Mesh(
+    new THREE.BoxGeometry(0.588, 0.748, 0.308),
+    buildSkinMaterialSet(skinCanvas, "body", "right", true)
+  );
+  bodyOverlayMesh.position.set(0, 1.08, 0);
+  root.add(bodyOverlayMesh);
 
   const headPivot = new THREE.Group();
   headPivot.position.set(0, 1.44, 0);
@@ -1006,6 +1062,12 @@ function createSteveAvatar(options = {}) {
   );
   headMesh.position.set(0, 0.24, 0);
   headPivot.add(headMesh);
+  const headOverlayMesh = new THREE.Mesh(
+    new THREE.BoxGeometry(0.504, 0.504, 0.504),
+    buildSkinMaterialSet(skinCanvas, "head", "right", true)
+  );
+  headOverlayMesh.position.set(0, 0.24, 0);
+  headPivot.add(headOverlayMesh);
   root.add(headPivot);
 
   const leftArmPivot = new THREE.Group();
@@ -1016,6 +1078,12 @@ function createSteveAvatar(options = {}) {
   );
   leftArmMesh.position.set(0, -0.36, 0);
   leftArmPivot.add(leftArmMesh);
+  const leftArmOverlayMesh = new THREE.Mesh(
+    new THREE.BoxGeometry(0.242, 0.742, 0.242),
+    buildSkinMaterialSet(skinCanvas, "arm", "left", true)
+  );
+  leftArmOverlayMesh.position.set(0, -0.36, 0);
+  leftArmPivot.add(leftArmOverlayMesh);
   root.add(leftArmPivot);
 
   const rightArmPivot = new THREE.Group();
@@ -1026,6 +1094,12 @@ function createSteveAvatar(options = {}) {
   );
   rightArmMesh.position.set(0, -0.36, 0);
   rightArmPivot.add(rightArmMesh);
+  const rightArmOverlayMesh = new THREE.Mesh(
+    new THREE.BoxGeometry(0.242, 0.742, 0.242),
+    buildSkinMaterialSet(skinCanvas, "arm", "right", true)
+  );
+  rightArmOverlayMesh.position.set(0, -0.36, 0);
+  rightArmPivot.add(rightArmOverlayMesh);
   root.add(rightArmPivot);
 
   const leftLegPivot = new THREE.Group();
@@ -1036,6 +1110,12 @@ function createSteveAvatar(options = {}) {
   );
   leftLegMesh.position.set(0, -0.375, 0);
   leftLegPivot.add(leftLegMesh);
+  const leftLegOverlayMesh = new THREE.Mesh(
+    new THREE.BoxGeometry(0.262, 0.772, 0.262),
+    buildSkinMaterialSet(skinCanvas, "leg", "left", true)
+  );
+  leftLegOverlayMesh.position.set(0, -0.375, 0);
+  leftLegPivot.add(leftLegOverlayMesh);
   root.add(leftLegPivot);
 
   const rightLegPivot = new THREE.Group();
@@ -1046,6 +1126,12 @@ function createSteveAvatar(options = {}) {
   );
   rightLegMesh.position.set(0, -0.375, 0);
   rightLegPivot.add(rightLegMesh);
+  const rightLegOverlayMesh = new THREE.Mesh(
+    new THREE.BoxGeometry(0.262, 0.772, 0.262),
+    buildSkinMaterialSet(skinCanvas, "leg", "right", true)
+  );
+  rightLegOverlayMesh.position.set(0, -0.375, 0);
+  rightLegPivot.add(rightLegOverlayMesh);
   root.add(rightLegPivot);
 
   const nameCanvas = document.createElement("canvas");
@@ -1074,6 +1160,12 @@ function createSteveAvatar(options = {}) {
     rightArmMesh,
     leftLegMesh,
     rightLegMesh,
+    headOverlayMesh,
+    bodyOverlayMesh,
+    leftArmOverlayMesh,
+    rightArmOverlayMesh,
+    leftLegOverlayMesh,
+    rightLegOverlayMesh,
     targetPos: new THREE.Vector3(0, 0, 0),
     yaw: 0,
     pitch: 0,
@@ -2566,11 +2658,17 @@ function initSkinEditorUi() {
   const applyPartVisibility = () => {
     if (!skinEditorPreviewAvatar) return;
     skinEditorPreviewAvatar.headMesh.visible = partHeadEl.checked;
+    skinEditorPreviewAvatar.headOverlayMesh.visible = partHeadEl.checked;
     skinEditorPreviewAvatar.bodyMesh.visible = partBodyEl.checked;
+    skinEditorPreviewAvatar.bodyOverlayMesh.visible = partBodyEl.checked;
     skinEditorPreviewAvatar.leftArmMesh.visible = partArmsEl.checked;
     skinEditorPreviewAvatar.rightArmMesh.visible = partArmsEl.checked;
+    skinEditorPreviewAvatar.leftArmOverlayMesh.visible = partArmsEl.checked;
+    skinEditorPreviewAvatar.rightArmOverlayMesh.visible = partArmsEl.checked;
     skinEditorPreviewAvatar.leftLegMesh.visible = partLegsEl.checked;
     skinEditorPreviewAvatar.rightLegMesh.visible = partLegsEl.checked;
+    skinEditorPreviewAvatar.leftLegOverlayMesh.visible = partLegsEl.checked;
+    skinEditorPreviewAvatar.rightLegOverlayMesh.visible = partLegsEl.checked;
   };
   partHeadEl.addEventListener("change", applyPartVisibility);
   partBodyEl.addEventListener("change", applyPartVisibility);
