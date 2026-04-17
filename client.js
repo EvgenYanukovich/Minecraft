@@ -484,7 +484,11 @@ function getEditorPixelFromEvent(evt) {
 }
 
 function pickSkinColorAt(x, y) {
-  const data = skinSourceCtx.getImageData(x, y, 1, 1).data;
+  const px = Math.max(0, Math.min(skinSourceSize - 1, Math.floor(x)));
+  const py = Math.max(0, Math.min(skinSourceSize - 1, Math.floor(y)));
+  const data = skinSourceCtx.getImageData(px, py, 1, 1).data;
+  const alpha = data[3] / 255;
+  if (alpha <= 0.001) return;
   skinColorEl.value = `#${[data[0], data[1], data[2]].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
   if (skinActiveColorEl) skinActiveColorEl.style.background = skinColorEl.value;
 }
@@ -2025,6 +2029,22 @@ function updateMining(dt) {
 }
 
 document.addEventListener("keydown", (e) => {
+  if (skinEditorOpen) {
+    skinAltHeld = e.altKey;
+    if (e.code === "Space") skinSpaceHeld = true;
+
+    const t = e.target;
+    const isTypingField = t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable);
+    if (!isTypingField) {
+      if (e.ctrlKey && e.code === "KeyZ") { e.preventDefault(); toolUndoEl.click(); return; }
+      if (e.ctrlKey && e.code === "KeyY") { e.preventDefault(); toolRedoEl.click(); return; }
+      if (e.code === "KeyB") { e.preventDefault(); toolBrushEl.click(); return; }
+      if (e.code === "KeyE") { e.preventDefault(); toolEraserEl.click(); return; }
+      if (e.code === "KeyH" && skinEditMode === "3d") { e.preventDefault(); toolHandEl.click(); return; }
+      if (e.code === "KeyI") { e.preventDefault(); toolPickerEl.click(); return; }
+    }
+  }
+
   if (e.code === "KeyF" && skinEditorOpen) {
     e.preventDefault();
     resetSkinEditorCamera();
@@ -2105,6 +2125,10 @@ document.addEventListener("keydown", (e) => {
 });
 
 document.addEventListener("keyup", (e) => {
+  if (skinEditorOpen) {
+    skinAltHeld = e.altKey;
+    if (e.code === "Space") skinSpaceHeld = false;
+  }
   keys.delete(e.code);
   if (e.code === "Tab") {
     tabHeld = false;
@@ -3059,7 +3083,7 @@ function initSkinEditorPreview() {
 
     const faceRect = resolveFaceRect();
     const px = Math.max(0, Math.min(faceRect.w - 1, Math.floor(uv.x * faceRect.w)));
-    const py = Math.max(0, Math.min(faceRect.h - 1, Math.floor((1 - uv.y) * faceRect.h)));
+    const py = Math.max(0, Math.min(faceRect.h - 1, Math.floor(uv.y * faceRect.h)));
     const tx = faceRect.x + px;
     const ty = faceRect.y + py;
     if (!isMeshPaintEnabled(hit.object)) return;
