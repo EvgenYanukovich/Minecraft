@@ -1324,101 +1324,111 @@ function createSteveAvatar(options = {}) {
   const skinCanvas = options.skinCanvas || skinSourceCanvas;
   const root = new THREE.Group();
 
+  const PX = 0.06;
+  const HEAD = 8 * PX;
+  const BODY_W = 8 * PX;
+  const BODY_H = 12 * PX;
+  const BODY_D = 4 * PX;
+  const LIMB_W = 4 * PX;
+  const LIMB_H = 12 * PX;
+  const LIMB_D = 4 * PX;
+  const OVERLAY_GROW = 0.024;
+
   const bodyMesh = new THREE.Mesh(
-    new THREE.BoxGeometry(0.56, 0.72, 0.28),
+    new THREE.BoxGeometry(BODY_W, BODY_H, BODY_D),
     buildSkinMaterialSet(skinCanvas, "body")
   );
-  bodyMesh.position.set(0, 1.08, 0);
+  bodyMesh.position.set(0, BODY_H * 0.5 + LIMB_H, 0);
   root.add(bodyMesh);
   const bodyOverlayMesh = new THREE.Mesh(
-    new THREE.BoxGeometry(0.588, 0.748, 0.308),
+    new THREE.BoxGeometry(BODY_W + OVERLAY_GROW, BODY_H + OVERLAY_GROW, BODY_D + OVERLAY_GROW),
     buildSkinMaterialSet(skinCanvas, "body", "right", true)
   );
-  bodyOverlayMesh.position.set(0, 1.08, 0);
+  bodyOverlayMesh.position.set(0, BODY_H * 0.5 + LIMB_H, 0);
   bodyOverlayMesh.renderOrder = 2;
   root.add(bodyOverlayMesh);
 
   const headPivot = new THREE.Group();
-  headPivot.position.set(0, 1.44, 0);
+  headPivot.position.set(0, BODY_H + LIMB_H, 0);
   const headMesh = new THREE.Mesh(
-    new THREE.BoxGeometry(0.48, 0.48, 0.48),
+    new THREE.BoxGeometry(HEAD, HEAD, HEAD),
     buildSkinMaterialSet(skinCanvas, "head")
   );
-  headMesh.position.set(0, 0.24, 0);
+  headMesh.position.set(0, HEAD * 0.5, 0);
   headPivot.add(headMesh);
   const headOverlayMesh = new THREE.Mesh(
-    new THREE.BoxGeometry(0.504, 0.504, 0.504),
+    new THREE.BoxGeometry(HEAD + OVERLAY_GROW, HEAD + OVERLAY_GROW, HEAD + OVERLAY_GROW),
     buildSkinMaterialSet(skinCanvas, "head", "right", true)
   );
-  headOverlayMesh.position.set(0, 0.24, 0);
+  headOverlayMesh.position.set(0, HEAD * 0.5, 0);
   headOverlayMesh.renderOrder = 2;
   headPivot.add(headOverlayMesh);
   root.add(headPivot);
 
   const leftArmPivot = new THREE.Group();
-  leftArmPivot.position.set(0.39, 1.38, 0);
+  leftArmPivot.position.set(BODY_W * 0.5 + LIMB_W * 0.5, BODY_H + LIMB_H, 0);
   const leftArmMesh = new THREE.Mesh(
-    new THREE.BoxGeometry(0.22, 0.72, 0.22),
+    new THREE.BoxGeometry(LIMB_W, LIMB_H, LIMB_D),
     buildSkinMaterialSet(skinCanvas, "arm", "left")
   );
-  leftArmMesh.position.set(0, -0.36, 0);
+  leftArmMesh.position.set(0, -LIMB_H * 0.5, 0);
   leftArmPivot.add(leftArmMesh);
   const leftArmOverlayMesh = new THREE.Mesh(
-    new THREE.BoxGeometry(0.242, 0.742, 0.242),
+    new THREE.BoxGeometry(LIMB_W + OVERLAY_GROW, LIMB_H + OVERLAY_GROW, LIMB_D + OVERLAY_GROW),
     buildSkinMaterialSet(skinCanvas, "arm", "left", true)
   );
-  leftArmOverlayMesh.position.set(0, -0.36, 0);
+  leftArmOverlayMesh.position.set(0, -LIMB_H * 0.5, 0);
   leftArmOverlayMesh.renderOrder = 2;
   leftArmPivot.add(leftArmOverlayMesh);
   root.add(leftArmPivot);
 
   const rightArmPivot = new THREE.Group();
-  rightArmPivot.position.set(-0.39, 1.38, 0);
+  rightArmPivot.position.set(-(BODY_W * 0.5 + LIMB_W * 0.5), BODY_H + LIMB_H, 0);
   const rightArmMesh = new THREE.Mesh(
-    new THREE.BoxGeometry(0.22, 0.72, 0.22),
+    new THREE.BoxGeometry(LIMB_W, LIMB_H, LIMB_D),
     buildSkinMaterialSet(skinCanvas, "arm", "right")
   );
-  rightArmMesh.position.set(0, -0.36, 0);
+  rightArmMesh.position.set(0, -LIMB_H * 0.5, 0);
   rightArmPivot.add(rightArmMesh);
   const rightArmOverlayMesh = new THREE.Mesh(
-    new THREE.BoxGeometry(0.242, 0.742, 0.242),
+    new THREE.BoxGeometry(LIMB_W + OVERLAY_GROW, LIMB_H + OVERLAY_GROW, LIMB_D + OVERLAY_GROW),
     buildSkinMaterialSet(skinCanvas, "arm", "right", true)
   );
-  rightArmOverlayMesh.position.set(0, -0.36, 0);
+  rightArmOverlayMesh.position.set(0, -LIMB_H * 0.5, 0);
   rightArmOverlayMesh.renderOrder = 2;
   rightArmPivot.add(rightArmOverlayMesh);
   root.add(rightArmPivot);
 
   const leftLegPivot = new THREE.Group();
-  leftLegPivot.position.set(0.14, 0.75, 0);
+  leftLegPivot.position.set(LIMB_W * 0.5, LIMB_H, 0);
   const leftLegMesh = new THREE.Mesh(
-    new THREE.BoxGeometry(0.24, 0.75, 0.24),
+    new THREE.BoxGeometry(LIMB_W, LIMB_H, LIMB_D),
     buildSkinMaterialSet(skinCanvas, "leg", "left")
   );
-  leftLegMesh.position.set(0, -0.375, 0);
+  leftLegMesh.position.set(0, -LIMB_H * 0.5, 0);
   leftLegPivot.add(leftLegMesh);
   const leftLegOverlayMesh = new THREE.Mesh(
-    new THREE.BoxGeometry(0.262, 0.772, 0.262),
+    new THREE.BoxGeometry(LIMB_W + OVERLAY_GROW, LIMB_H + OVERLAY_GROW, LIMB_D + OVERLAY_GROW),
     buildSkinMaterialSet(skinCanvas, "leg", "left", true)
   );
-  leftLegOverlayMesh.position.set(0, -0.375, 0);
+  leftLegOverlayMesh.position.set(0, -LIMB_H * 0.5, 0);
   leftLegOverlayMesh.renderOrder = 2;
   leftLegPivot.add(leftLegOverlayMesh);
   root.add(leftLegPivot);
 
   const rightLegPivot = new THREE.Group();
-  rightLegPivot.position.set(-0.14, 0.75, 0);
+  rightLegPivot.position.set(-(LIMB_W * 0.5), LIMB_H, 0);
   const rightLegMesh = new THREE.Mesh(
-    new THREE.BoxGeometry(0.24, 0.75, 0.24),
+    new THREE.BoxGeometry(LIMB_W, LIMB_H, LIMB_D),
     buildSkinMaterialSet(skinCanvas, "leg", "right")
   );
-  rightLegMesh.position.set(0, -0.375, 0);
+  rightLegMesh.position.set(0, -LIMB_H * 0.5, 0);
   rightLegPivot.add(rightLegMesh);
   const rightLegOverlayMesh = new THREE.Mesh(
-    new THREE.BoxGeometry(0.262, 0.772, 0.262),
+    new THREE.BoxGeometry(LIMB_W + OVERLAY_GROW, LIMB_H + OVERLAY_GROW, LIMB_D + OVERLAY_GROW),
     buildSkinMaterialSet(skinCanvas, "leg", "right", true)
   );
-  rightLegOverlayMesh.position.set(0, -0.375, 0);
+  rightLegOverlayMesh.position.set(0, -LIMB_H * 0.5, 0);
   rightLegOverlayMesh.renderOrder = 2;
   rightLegPivot.add(rightLegOverlayMesh);
   root.add(rightLegPivot);

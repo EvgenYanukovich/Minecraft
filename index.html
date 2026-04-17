@@ -96,10 +96,12 @@
             </select>
           </div>
           <div class="skin-editor-tools-row skin-editor-palette-row">
-            <button id="skin-active-color" class="skin-active-color" type="button" title="Активный цвет"></button>
+            <div class="skin-active-color-wrap">
+              <button id="skin-active-color" class="skin-active-color" type="button" title="Активный цвет"></button>
+              <input id="skin-color" class="skin-color-anchor" type="color" value="#2e6fb7" />
+            </div>
             <button id="skin-choose-color" class="mc-mini-btn" type="button">Выбрать цвет</button>
             <div class="skin-editor-palette" id="skin-palette"></div>
-            <input id="skin-color" class="hidden" type="color" value="#2e6fb7" />
           </div>
         </div>
         <div class="skin-editor-right">
