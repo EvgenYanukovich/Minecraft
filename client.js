@@ -31,6 +31,7 @@ const chatSendEl = document.getElementById("chat-send");
 const menuSkin3dEl = document.getElementById("menu-skin-3d");
 const pingOverlayEl = document.getElementById("ping-overlay");
 const pingListEl = document.getElementById("ping-list");
+const menuPanoramaEl = document.getElementById("menu-panorama");
 const inventoryEl = document.getElementById("inventory");
 const inventoryHeldEl = document.getElementById("inventory-held");
 const inventoryGridEl = document.getElementById("inventory-grid");
@@ -122,6 +123,10 @@ let menuSkinRenderer = null;
 let menuSkinScene = null;
 let menuSkinCamera = null;
 let menuSkinAvatar = null;
+let panoramaRenderer = null;
+let panoramaScene = null;
+let panoramaCamera = null;
+let panoramaTime = 0;
 
 function getBlockColorById(id) {
   return id === BLOCKS.stone.id ? "#81858d" :
@@ -1845,6 +1850,98 @@ function updateRemotePlayersAnimation(dt) {
   }
 }
 
+function initMenuPanorama() {
+  if (!menuPanoramaEl || panoramaRenderer) return;
+
+  panoramaScene = new THREE.Scene();
+  panoramaScene.background = new THREE.Color(0x7cb2ff);
+  panoramaCamera = new THREE.PerspectiveCamera(62, 1, 0.1, 250);
+
+  const hemi = new THREE.HemisphereLight(0xcfe5ff, 0x6a7a4d, 0.9);
+  panoramaScene.add(hemi);
+  const sun = new THREE.DirectionalLight(0xffffff, 0.8);
+  sun.position.set(20, 28, 12);
+  panoramaScene.add(sun);
+
+  const blockGeo = new THREE.BoxGeometry(1, 1, 1);
+  const waterMat = new THREE.MeshLambertMaterial({ color: 0x4a83cb });
+  const grassMat = new THREE.MeshLambertMaterial({ color: 0x58a947 });
+  const dirtMat = new THREE.MeshLambertMaterial({ color: 0x89613f });
+  const stoneMat = new THREE.MeshLambertMaterial({ color: 0x7e848e });
+  const woodMat = new THREE.MeshLambertMaterial({ color: 0x8f683d });
+  const leavesMat = new THREE.MeshLambertMaterial({ color: 0x3f8f49 });
+
+  const radius = 28;
+  for (let x = -radius; x <= radius; x += 1) {
+    for (let z = -radius; z <= radius; z += 1) {
+      const d = Math.sqrt(x * x + z * z);
+      if (d > radius) continue;
+
+      const h = Math.max(2, Math.floor(7 + Math.sin(x * 0.18) * 2 + Math.cos(z * 0.16) * 2));
+      for (let y = 0; y < h; y += 1) {
+        const m = y === h - 1 ? grassMat : (y > h - 4 ? dirtMat : stoneMat);
+        const b = new THREE.Mesh(blockGeo, m);
+        b.position.set(x + 0.5, y + 0.5, z + 0.5);
+        panoramaScene.add(b);
+      }
+
+      if (h <= 6) {
+        const w = new THREE.Mesh(blockGeo, waterMat);
+        w.position.set(x + 0.5, 6.5, z + 0.5);
+        panoramaScene.add(w);
+      }
+
+      const treeNoise = Math.abs(Math.sin(x * 11.13 + z * 7.91));
+      if (treeNoise > 0.988 && h > 6 && d < radius - 4) {
+        const trunk = 3;
+        for (let i = 0; i < trunk; i += 1) {
+          const log = new THREE.Mesh(blockGeo, woodMat);
+          log.position.set(x + 0.5, h + i + 0.5, z + 0.5);
+          panoramaScene.add(log);
+        }
+        const topY = h + trunk;
+        for (let ox = -2; ox <= 2; ox += 1) {
+          for (let oz = -2; oz <= 2; oz += 1) {
+            for (let oy = -1; oy <= 2; oy += 1) {
+              if (Math.abs(ox) + Math.abs(oz) + Math.abs(oy) > 4) continue;
+              const leaf = new THREE.Mesh(blockGeo, leavesMat);
+              leaf.position.set(x + ox + 0.5, topY + oy + 0.5, z + oz + 0.5);
+              panoramaScene.add(leaf);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  panoramaRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+  panoramaRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  panoramaRenderer.setClearColor(0x7cb2ff, 1);
+  menuPanoramaEl.append(panoramaRenderer.domElement);
+
+  function resizePanorama() {
+    if (!panoramaRenderer || !panoramaCamera || !menuPanoramaEl) return;
+    const w = Math.max(1, menuPanoramaEl.clientWidth);
+    const h = Math.max(1, menuPanoramaEl.clientHeight);
+    panoramaRenderer.setSize(w, h, false);
+    panoramaCamera.aspect = w / h;
+    panoramaCamera.updateProjectionMatrix();
+  }
+
+  resizePanorama();
+  window.addEventListener("resize", resizePanorama);
+}
+
+function updateMenuPanorama(dt) {
+  if (!panoramaRenderer || !panoramaScene || !panoramaCamera) return;
+  panoramaTime += dt;
+  const r = 21;
+  const y = 10.5 + Math.sin(panoramaTime * 0.27) * 0.4;
+  panoramaCamera.position.set(Math.cos(panoramaTime * 0.13) * r, y, Math.sin(panoramaTime * 0.13) * r);
+  panoramaCamera.lookAt(0, 7.5, 0);
+  panoramaRenderer.render(panoramaScene, panoramaCamera);
+}
+
 function initMenuSkin3d() {
   if (!menuSkin3dEl || menuSkinRenderer) return;
   menuSkinScene = new THREE.Scene();
@@ -1927,7 +2024,10 @@ let menuLast = performance.now();
 function animateMenu(now) {
   const dt = Math.min(MAX_STEP, (now - menuLast) / 1000);
   menuLast = now;
-  if (!gameStarted) updateMenuSkin3d(dt);
+  if (!gameStarted) {
+    updateMenuPanorama(dt);
+    updateMenuSkin3d(dt);
+  }
   requestAnimationFrame(animateMenu);
 }
 
@@ -1937,4 +2037,5 @@ hidePingOverlay();
 syncLocalNickname();
 
 initMenuSkin3d();
+initMenuPanorama();
 requestAnimationFrame(animateMenu);

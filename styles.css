@@ -23,9 +23,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  background:
-    linear-gradient(rgba(0, 0, 0, 0.15), rgba(0, 0, 0, 0.45)),
-    radial-gradient(circle at 20% 20%, #5f8ccf 0%, #4e78bd 36%, #2f4f89 70%, #1c315e 100%);
+  background: linear-gradient(rgba(0, 0, 0, 0.22), rgba(0, 0, 0, 0.58));
 }
 
 .start-menu.hidden {
@@ -208,6 +206,22 @@ body {
 
 .hidden {
   display: none !important;
+}
+
+.menu-panorama {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.menu-panorama canvas {
+  position: absolute;
+  inset: 0;
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
 }
 
 .game-canvas {
