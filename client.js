@@ -2913,7 +2913,21 @@ function initSkinEditorPreview() {
     const hits = ray.intersectObjects(meshes, false);
     if (!hits.length) return;
 
-    const hit = hits[0];
+    const isOverlayObject = (obj) => [
+      skinEditorPreviewAvatar.headOverlayMesh,
+      skinEditorPreviewAvatar.bodyOverlayMesh,
+      skinEditorPreviewAvatar.leftArmOverlayMesh,
+      skinEditorPreviewAvatar.rightArmOverlayMesh,
+      skinEditorPreviewAvatar.leftLegOverlayMesh,
+      skinEditorPreviewAvatar.rightLegOverlayMesh,
+    ].includes(obj);
+
+    let hit = hits[0];
+    if (skinTool !== "picker") {
+      const wantOverlay = skinPaintLayer === "overlay";
+      const matched = hits.find((h) => isOverlayObject(h.object) === wantOverlay);
+      if (matched) hit = matched;
+    }
     const uv = hit.uv;
     const materialIndex = hit.face?.materialIndex ?? 0;
     const partName = hit.object === skinEditorPreviewAvatar.headMesh || hit.object === skinEditorPreviewAvatar.headOverlayMesh ? "head" :
@@ -2958,14 +2972,7 @@ function initSkinEditorPreview() {
     if (!getPartEnabledForPixel(tx, ty)) return;
     if (!canPaintByLayer(tx, ty) && skinTool !== "picker") return;
 
-    const isOverlayMesh = [
-      skinEditorPreviewAvatar.headOverlayMesh,
-      skinEditorPreviewAvatar.bodyOverlayMesh,
-      skinEditorPreviewAvatar.leftArmOverlayMesh,
-      skinEditorPreviewAvatar.rightArmOverlayMesh,
-      skinEditorPreviewAvatar.leftLegOverlayMesh,
-      skinEditorPreviewAvatar.rightLegOverlayMesh,
-    ].includes(hit.object);
+    const isOverlayMesh = isOverlayObject(hit.object);
     if (skinTool !== "picker") {
       if (skinPaintLayer === "overlay" && !isOverlayMesh) return;
       if (skinPaintLayer === "base" && isOverlayMesh) return;
@@ -3016,9 +3023,7 @@ function updateSkinEditorPreview(dt) {
     Math.cos(skinEditorOrbitYaw) * skinEditorOrbitDistance * cp,
   );
   skinEditorPreviewCamera.lookAt(0, 1.1, 0);
-  if (!skinOrbiting) {
-    skinEditorOrbitYaw += dt * 0.6;
-  }
+  // no auto-rotation in 3D edit mode
   skinEditorPreviewAvatar.leftArmPivot.rotation.x = 0;
   skinEditorPreviewAvatar.rightArmPivot.rotation.x = 0;
   skinEditorPreviewAvatar.leftLegPivot.rotation.x = 0;
