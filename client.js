@@ -137,6 +137,12 @@ function getPanoramaHeightAt(x, z) {
   return panoramaHeightMap.get(panoramaHeightKey(Math.floor(x), Math.floor(z))) ?? 8;
 }
 
+function markPanoramaOccupied(x, z, topY) {
+  const key = panoramaHeightKey(x, z);
+  const prev = panoramaHeightMap.get(key) ?? -Infinity;
+  panoramaHeightMap.set(key, Math.max(prev, topY));
+}
+
 function getBlockColorById(id) {
   return id === BLOCKS.stone.id ? "#81858d" :
     id === BLOCKS.wood.id ? "#9b6d3f" :
@@ -1894,7 +1900,7 @@ function initMenuPanorama() {
       if (d > radius) continue;
 
       const h = Math.max(2, Math.floor(7 + Math.sin(x * 0.18) * 2 + Math.cos(z * 0.16) * 2));
-      panoramaHeightMap.set(panoramaHeightKey(x, z), h);
+      markPanoramaOccupied(x, z, h);
       for (let y = 0; y < h; y += 1) {
         const m = y === h - 1 ? grassMat : (y > h - 4 ? dirtMat : stoneMat);
         const b = new THREE.Mesh(blockGeo, m);
@@ -1915,6 +1921,7 @@ function initMenuPanorama() {
           const log = new THREE.Mesh(blockGeo, woodMat);
           log.position.set(x + 0.5, h + i + 0.5, z + 0.5);
           panoramaScene.add(log);
+          markPanoramaOccupied(x, z, h + i + 1);
         }
         const topY = h + trunk;
         for (let ox = -2; ox <= 2; ox += 1) {
@@ -1924,6 +1931,7 @@ function initMenuPanorama() {
               const leaf = new THREE.Mesh(blockGeo, leavesMat);
               leaf.position.set(x + ox + 0.5, topY + oy + 0.5, z + oz + 0.5);
               panoramaScene.add(leaf);
+              markPanoramaOccupied(x + ox, z + oz, topY + oy + 1);
             }
           }
         }
@@ -1957,7 +1965,7 @@ function updateMenuPanorama(dt) {
   const camX = Math.cos(angle) * r;
   const camZ = Math.sin(angle) * r;
   const groundY = getPanoramaHeightAt(camX, camZ);
-  const y = groundY + 3.8 + Math.sin(panoramaTime * 0.23) * 0.22;
+  const y = groundY + 4.8 + Math.sin(panoramaTime * 0.23) * 0.22;
   panoramaCamera.position.set(camX, y, camZ);
   panoramaCamera.lookAt(0, 7.5, 0);
   panoramaRenderer.render(panoramaScene, panoramaCamera);
