@@ -20,6 +20,11 @@ const MIME = {
 const players = new Map();
 const blockOverrides = new Map();
 const rooms = new Map();
+const roomBanUntil = new Map();
+
+function roomBanKey(roomCode, clientId) {
+  return `${String(roomCode || "").toUpperCase()}::${String(clientId || "")}`;
+}
 
 function leaveRoom(playerId, notify = true) {
   const state = players.get(playerId);
@@ -124,6 +129,7 @@ function sendRoomMembers(room) {
   sendRoomToAll(room, {
     type: "room_members",
     hostId: room.hostId,
+    started: Boolean(room.started),
     members: buildRoomMembers(room),
   });
 }
@@ -235,8 +241,20 @@ wss.on("connection", (ws) => {
         return;
       }
 
+      if (msg.type === "room_join") {
+        const banKey = roomBanKey(rc, id);
+        const banUntil = roomBanUntil.get(banKey) || 0;
+        if (Date.now() < banUntil) {
+          ws.send(JSON.stringify({ type: "room_error", reason: "banned-temporarily" }));
+          return;
+        }
+        if (banUntil && Date.now() >= banUntil) {
+          roomBanUntil.delete(banKey);
+        }
+      }
+
       if (!room) {
-        room = { hostId: id, members: new Set(), blocks: new Map() };
+        room = { hostId: id, members: new Set(), blocks: new Map(), started: false };
         rooms.set(rc, room);
       }
 
@@ -250,7 +268,7 @@ wss.on("connection", (ws) => {
       state.roomCode = rc;
       state.nickname = String(msg.nickname || state.nickname || "Player").slice(0, 16);
       room.members.add(id);
-      ws.send(JSON.stringify({ type: "room_joined", roomCode: rc, clientId: id, hostId: room.hostId }));
+      ws.send(JSON.stringify({ type: "room_joined", roomCode: rc, clientId: id, hostId: room.hostId, started: Boolean(room.started) }));
 
       sendRoomToOthers(room, id, {
         type: "peer_joined",
@@ -403,6 +421,8 @@ wss.on("connection", (ws) => {
       if (!room || !room.members.has(id)) return;
       if (room.hostId !== id) return;
 
+      room.started = true;
+
       sendRoomToAll(room, {
         type: "room_start",
         roomCode: rc,
@@ -419,6 +439,8 @@ wss.on("connection", (ws) => {
 
       const targetState = players.get(targetId);
       const targetNickname = String(targetState?.nickname || "Player").slice(0, 16);
+
+      roomBanUntil.set(roomBanKey(rc, targetId), Date.now() + 10 * 60 * 1000);
 
       sendRoomToAll(room, {
         type: "kicked",

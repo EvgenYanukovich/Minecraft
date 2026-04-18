@@ -20,6 +20,7 @@ const backMainBtnEl = document.getElementById("btn-back-main");
 const joinRoomBtnEl = document.getElementById("btn-join-room");
 const backMultiplayerBtnEl = document.getElementById("btn-back-multiplayer");
 const copyRoomBtnEl = document.getElementById("btn-copy-room");
+const toggleRoomCodeBtnEl = document.getElementById("btn-toggle-room-code");
 const startRoomBtnEl = document.getElementById("btn-start-room");
 const leaveLobbyBtnEl = document.getElementById("btn-leave-lobby");
 const customizeSkinBtnEl = document.getElementById("btn-customize-skin");
@@ -137,6 +138,8 @@ let isHostRole = false;
 let localServerPeerId = null;
 let lobbyHostId = null;
 let roomParticipants = [];
+let roomStarted = false;
+let roomCodeVisible = false;
 let chatHideTimer = null;
 let chatFadeTimer = null;
 let chatAutoVisible = false;
@@ -560,6 +563,9 @@ function setEditorOpen(open) {
     if (skinEditMode === "3d" && typeof skinEditorPreviewResizeFn === "function") {
       skinEditorPreviewResizeFn();
     }
+    if (skinEditMode === "2d" && typeof skinPreviewPanelResizeFn === "function") {
+      skinPreviewPanelResizeFn();
+    }
   } else if (skinSavedSnapshot) {
     restoreSkinSnapshot(skinSavedSnapshot);
     syncSkinToCanvasView();
@@ -735,6 +741,19 @@ function setMenuScreen(screen) {
   menuLobbyEl.classList.toggle("hidden", screen !== "lobby");
 }
 
+function maskRoomCode(code) {
+  const raw = String(code || "").trim();
+  if (!raw) return "••••••";
+  return "•".repeat(Math.max(6, raw.length));
+}
+
+function renderRoomCodeDisplay(code) {
+  const raw = String(code || "").trim();
+  roomCodeValueEl.dataset.realCode = raw;
+  roomCodeValueEl.textContent = roomCodeVisible ? (raw || "------") : maskRoomCode(raw);
+  toggleRoomCodeBtnEl.textContent = roomCodeVisible ? "Скрыть" : "Показать";
+}
+
 function getParticipantDisplayName(item) {
   const nick = String(item.nickname || "Player").trim();
   return nick ? nick : "Player";
@@ -813,13 +832,22 @@ function removeParticipantById(id) {
 function resetLobbyState() {
   roomParticipants = [];
   lobbyHostId = null;
-  roomCodeValueEl.textContent = "------";
+  roomStarted = false;
+  roomCodeVisible = false;
+  renderRoomCodeDisplay("");
   renderParticipants();
   renderPauseParticipants();
 }
 
 function updateLobbyStartButtonState() {
-  startRoomBtnEl.disabled = !(localServerPeerId && localServerPeerId === lobbyHostId);
+  const isHostNow = Boolean(localServerPeerId && localServerPeerId === lobbyHostId);
+  if (isHostNow) {
+    startRoomBtnEl.disabled = false;
+    startRoomBtnEl.textContent = "Начать игру";
+  } else {
+    startRoomBtnEl.disabled = !roomStarted;
+    startRoomBtnEl.textContent = roomStarted ? "Присоединиться к игре" : "Ожидание старта хоста";
+  }
 }
 
 function appendSystemMessage(text) {
@@ -2388,8 +2416,9 @@ function connectToRoom(code, mode) {
       } else {
         ws = null;
         roomCode = null;
+        setPauseOpen(false);
         clearAllRemotePlayers();
-        returnToMenuForReconnect("Соединение закрыто. Можно переподключиться.");
+        returnToMenuForReconnect("Соединение потеряно. Можно переподключиться.");
       }
     };
 
@@ -2405,9 +2434,13 @@ function connectToRoom(code, mode) {
         joined = true;
         ws = socket;
         roomCode = msg.roomCode;
-        roomCodeValueEl.textContent = msg.roomCode;
+        renderRoomCodeDisplay(msg.roomCode);
         lobbyHostId = String(msg.hostId || lobbyHostId || "");
         localServerPeerId = String(msg.clientId || localServerPeerId || "");
+        roomStarted = Boolean(msg.started);
+        if (roomStarted && !isHostRole) {
+          menuStatusEl.textContent = "Игра уже запущена. Нажми 'Присоединиться к игре'.";
+        }
         isHostRole = Boolean(localServerPeerId && localServerPeerId === lobbyHostId);
         roomParticipants = [];
         ensureParticipantById(localServerPeerId || localClientId, localNickname);
@@ -2419,6 +2452,7 @@ function connectToRoom(code, mode) {
 
       if (msg.type === "room_members") {
         lobbyHostId = String(msg.hostId || lobbyHostId || "");
+        roomStarted = Boolean(msg.started);
         isHostRole = Boolean(localServerPeerId && localServerPeerId === lobbyHostId);
         const list = Array.isArray(msg.members) ? msg.members : [];
         roomParticipants = list.map((item) => ({
@@ -2498,6 +2532,8 @@ function connectToRoom(code, mode) {
       }
 
       if (msg.type === "room_start") {
+        roomStarted = true;
+        updateLobbyStartButtonState();
         beginGame();
       }
 
@@ -2624,7 +2660,7 @@ becomeHostBtnEl.addEventListener("click", async () => {
       }
     }
     if (!room) throw new Error("room-create-failed");
-    roomCodeValueEl.textContent = room;
+    renderRoomCodeDisplay(room);
     setMenuScreen("lobby");
     updateLobbyStartButtonState();
     menuStatusEl.textContent = "Комната создана.";
@@ -2649,19 +2685,26 @@ joinRoomBtnEl.addEventListener("click", async () => {
   resetLobbyState();
 
   try {
-    await connectToRoom(code, "join");
-    roomCodeValueEl.textContent = code;
+    const joinedRoom = await connectToRoom(code, "join");
+    renderRoomCodeDisplay(code);
     setMenuScreen("lobby");
     updateLobbyStartButtonState();
     if (!gameStarted) menuStatusEl.textContent = "Подключено к комнате.";
-  } catch {
+    if (joinedRoom !== code) {
+      renderRoomCodeDisplay(joinedRoom);
+    }
+  } catch (error) {
     menuStatusEl.textContent = "Не удалось подключиться к комнате.";
+    const reason = String(error?.message || "");
+    if (reason.includes("banned-temporarily")) {
+      menuStatusEl.textContent = "Ты кикнут из этой комнаты. Повторный вход через 10 минут.";
+    }
   }
 });
 
 copyRoomBtnEl.addEventListener("click", async () => {
-  const text = String(roomCodeValueEl.textContent || "").trim();
-  if (!text || text === "------") return;
+  const text = String(roomCodeValueEl.dataset.realCode || "").trim();
+  if (!text) return;
   try {
     await navigator.clipboard.writeText(text);
     menuStatusEl.textContent = "Номер комнаты скопирован.";
@@ -2670,11 +2713,17 @@ copyRoomBtnEl.addEventListener("click", async () => {
   }
 });
 
+toggleRoomCodeBtnEl.addEventListener("click", () => {
+  roomCodeVisible = !roomCodeVisible;
+  renderRoomCodeDisplay(roomCodeValueEl.dataset.realCode || "");
+});
+
 startRoomBtnEl.addEventListener("click", () => {
   if (!isConnectedToRoom()) return;
   if (isHostRole) {
     ws.send(JSON.stringify({ type: "room_start", roomCode }));
   } else {
+    if (!roomStarted) return;
     beginGame();
   }
 });
@@ -2688,6 +2737,7 @@ leaveLobbyBtnEl.addEventListener("click", () => {
   isHostRole = false;
   networkMode = "none";
   localServerPeerId = null;
+  appendSystemMessage(`Игрок ${localNickname} покидает игру.`);
   resetLobbyState();
   setMenuScreen("multiplayer");
   menuStatusEl.textContent = "Ты вышел из комнаты.";
